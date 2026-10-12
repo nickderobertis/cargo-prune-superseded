@@ -30,7 +30,7 @@ version="${pkgid##*[#@]}"
 log="$(cargo package --locked --offline --allow-dirty -p "$CRATE" 2>&1)" \
   || fail "'cargo package' failed (above): the crate does not build from its published archive." "run 'just fetch' if a crate is missing from the cache, or add any file the build needs to the package (Cargo.toml include/exclude), then re-run 'just install-smoke'." "$log"
 
-install_root="$(mktemp -d 2>&1)" \
+install_root="$(mktemp -d "${TMPDIR:-/tmp}/cargo-prune-superseded-install.XXXXXX" 2>&1)" \
   || fail "cannot create a temporary install root (above)." "free space or fix TMPDIR, then re-run 'just install-smoke'." "$install_root"
 cleanup() {
   local error
