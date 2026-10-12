@@ -1,4 +1,4 @@
-//! `scripts/bootstrap.sh`, run as `just bootstrap` runs it, with `bun`, `cargo` and
+//! `scripts/bootstrap.sh`, run as `just bootstrap` runs it (after `just fetch`), with `bun`, `cargo` and
 //! `rustup` stubbed: each would install from the network, which this offline tier cannot
 //! reach. The stubs record every call, so each journey asserts exactly what bootstrap
 //! asked of them; the script's own decisions run for real.
@@ -75,6 +75,29 @@ impl Installers {
         std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o755)).expect("+x");
         self
     }
+
+    /// A `cargo` that records its calls and, for `cargo install --locked <tool>`, puts a
+    /// working `<tool>` on PATH — unless `<tool>` is `failing_tool`, which it refuses.
+    fn installing_cargo(&self, failing_tool: Option<&str>) -> &Self {
+        let log = self.dir.path().join("calls");
+        let refuse = failing_tool.map_or(String::new(), |tool| {
+            format!("[ \"$3\" = {tool:?} ] && {{ echo 'error: could not compile {tool}' >&2; exit 101; }}\n")
+        });
+        let path = self.dir.path().join("cargo");
+        std::fs::write(
+            &path,
+            format!(
+                "#!/usr/bin/env bash\necho \"cargo $*\" >>{log:?}\n\
+                 if [ \"$1\" = install ]; then\n{refuse}\
+                 printf '#!/usr/bin/env bash\\nexit 0\\n' >{dir:?}/\"$3\"; chmod +x {dir:?}/\"$3\"\nfi\nexit 0\n",
+                log = log.display().to_string(),
+                dir = self.dir.path().display().to_string(),
+            ),
+        )
+        .expect("a stub");
+        std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o755)).expect("+x");
+        self
+    }
     // llmlint: ignore-end[e2e_not_mocked]
 
     fn calls(&self) -> Vec<String> {
@@ -115,11 +138,7 @@ fn bootstrap_installs_the_locked_toolchain_quietly() {
     assert_eq!(stderr(&output), "");
     assert_eq!(
         installers.calls(),
-        [
-            "bun install --frozen-lockfile",
-            "rustup toolchain install",
-            "cargo fetch --locked",
-        ]
+        ["bun install --frozen-lockfile", "rustup toolchain install"]
     );
 }
 
@@ -133,7 +152,6 @@ fn bootstrap_installs_missing_cargo_test_tools() {
         installers.calls(),
         [
             "bun install --frozen-lockfile",
-            "cargo fetch --locked",
             "cargo install --locked cargo-llvm-cov",
             "cargo install --locked cargo-nextest",
         ]
@@ -145,7 +163,6 @@ fn every_failing_step_stops_bootstrap_with_its_output_and_what_to_do() {
     for (tool, args, present_tools) in [
         ("bun", "install --frozen-lockfile", true),
         ("rustup", "toolchain install", true),
-        ("cargo", "fetch --locked", true),
         ("cargo", "install --locked cargo-llvm-cov", false),
         ("cargo", "install --locked cargo-nextest", false),
     ] {
@@ -204,4 +221,88 @@ fn a_missing_toolchain_is_named_with_where_to_get_it() {
             "nothing is installed"
         );
     }
+}
+
+#[test]
+fn a_rerun_after_a_failed_install_completes_and_installs_nothing_twice() {
+    let installers = Installers::new();
+    installers
+        .stub("bun", None)
+        .stub("cargo", None)
+        .stub(
+            "rustup",
+            Some(("toolchain install", "error: network unreachable")),
+        )
+        .stub("cargo-llvm-cov", None)
+        .stub("cargo-nextest", None);
+    let failed = installers.run();
+    assert_eq!(failed.status.code(), Some(1));
+    assert!(
+        stderr(&failed).contains("'rustup toolchain install' failed"),
+        "stderr: {}",
+        stderr(&failed)
+    );
+    installers.stub("rustup", None);
+    let retried = installers.run();
+    assert_eq!(
+        retried.status.code(),
+        Some(0),
+        "stderr: {}",
+        stderr(&retried)
+    );
+    assert_eq!(stderr(&retried), "");
+    let rerun = installers.run();
+    assert_eq!(rerun.status.code(), Some(0), "stderr: {}", stderr(&rerun));
+    assert_eq!(
+        installers.calls(),
+        [
+            "bun install --frozen-lockfile",
+            "rustup toolchain install",
+            "bun install --frozen-lockfile",
+            "rustup toolchain install",
+            "bun install --frozen-lockfile",
+            "rustup toolchain install",
+        ],
+        "each run re-applies the locked installs and installs no cargo tool already present"
+    );
+}
+
+#[test]
+fn installed_cargo_tools_are_skipped_on_the_next_run_even_after_a_partial_failure() {
+    let installers = Installers::new();
+    installers
+        .stub("bun", None)
+        .stub("rustup", None)
+        .installing_cargo(Some("cargo-nextest"));
+    let partial = installers.run();
+    assert_eq!(partial.status.code(), Some(1));
+    assert!(
+        stderr(&partial).contains("'cargo install --locked cargo-nextest' failed"),
+        "stderr: {}",
+        stderr(&partial)
+    );
+    installers.installing_cargo(None);
+    let recovered = installers.run();
+    assert_eq!(
+        recovered.status.code(),
+        Some(0),
+        "stderr: {}",
+        stderr(&recovered)
+    );
+    let rerun = installers.run();
+    assert_eq!(rerun.status.code(), Some(0), "stderr: {}", stderr(&rerun));
+    let installs: Vec<String> = installers
+        .calls()
+        .into_iter()
+        .filter(|call| call.starts_with("cargo install"))
+        .collect();
+    assert_eq!(
+        installs,
+        [
+            "cargo install --locked cargo-llvm-cov",
+            "cargo install --locked cargo-nextest",
+            "cargo install --locked cargo-nextest",
+        ],
+        "llvm-cov installs once; nextest is retried once, then skipped"
+    );
 }

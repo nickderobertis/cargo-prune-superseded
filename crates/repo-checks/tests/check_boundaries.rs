@@ -1,4 +1,4 @@
-//! `scripts/check-boundaries.mjs`, run with node as the `workspace:lint` target runs it,
+//! `tools/check-boundaries.mjs`, run with node as the `workspace:lint` target runs it,
 //! in a scratch directory whose `node_modules/.bin/nx` is a stub that writes a chosen
 //! project graph: the graph Nx computes is the input under test, so each journey hands
 //! the script one and asserts its verdict, exit status and message.
@@ -10,12 +10,19 @@ use std::path::Path;
 use std::process::Output;
 
 fn run_with_graph(graph: Option<&str>) -> Output {
+    run_with_nx(graph, false)
+}
+
+/// As `run_with_graph`; with `leave_a_directory`, nx instead leaves a non-empty directory
+/// where the graph file belongs, which the script can neither read nor remove.
+fn run_with_nx(graph: Option<&str>, leave_a_directory: bool) -> Output {
     let workspace = tempfile::tempdir().expect("a workspace");
     let bin = workspace.path().join("node_modules/.bin");
     std::fs::create_dir_all(&bin).expect("node_modules/.bin");
     let served = workspace.path().join("graph.json");
     // llmlint: ignore-block[e2e_not_mocked] the graph Nx computes is this script's input, so a stub nx serving a chosen graph is how each verdict is reached; the script itself runs for real under node.
     let body = match graph {
+        _ if leave_a_directory => "#!/usr/bin/env bash\nfor arg in \"$@\"; do case \"$arg\" in --file=*) mkdir -p \"${arg#--file=}/x\";; esac; done\n".to_owned(),
         Some(graph) => {
             std::fs::write(&served, graph).expect("a graph");
             format!(
@@ -32,8 +39,10 @@ fn run_with_graph(graph: Option<&str>) -> Output {
     std::fs::write(&nx, body).expect("the nx stub");
     std::fs::set_permissions(&nx, std::fs::Permissions::from_mode(0o755)).expect("+x");
     std::process::Command::new("node")
-        .arg(Path::new(env!("CARGO_MANIFEST_DIR")).join("../../scripts/check-boundaries.mjs"))
+        .arg(Path::new(env!("CARGO_MANIFEST_DIR")).join("../../tools/check-boundaries.mjs"))
         .current_dir(workspace.path())
+        // The script's temporary graph file lands in this test's own directory.
+        .env("TMPDIR", workspace.path())
         .output()
         .expect("node runs the script")
 }
@@ -73,10 +82,14 @@ const PROJECTS: &[(&str, &str)] = &[
 ];
 
 #[test]
-fn a_graph_whose_edges_point_from_tests_to_what_they_check_passes_quietly() {
+fn a_graph_whose_edges_point_onto_what_projects_use_passes_quietly() {
     let output = run_with_graph(Some(&graph(
         PROJECTS,
-        &[("app-e2e", "app"), ("app-e2e", "tooling")],
+        &[
+            ("app-e2e", "app"),
+            ("app-e2e", "tooling"),
+            ("app", "tooling"),
+        ],
     )));
     assert_eq!(output.status.code(), Some(0), "stderr: {}", stderr(&output));
     assert_eq!(output.stdout, b"");
@@ -89,18 +102,6 @@ fn an_edge_onto_a_test_suite_fails_naming_it() {
     assert_eq!(output.status.code(), Some(1));
     assert!(
         stderr(&output).contains("tooling -> app-e2e (any may not depend on type:e2e)"),
-        "stderr: {}",
-        stderr(&output)
-    );
-}
-
-#[test]
-fn the_deliverable_depending_on_tooling_fails_naming_the_edge() {
-    let output = run_with_graph(Some(&graph(PROJECTS, &[("app", "tooling")])));
-    assert_eq!(output.status.code(), Some(1));
-    assert!(
-        stderr(&output).contains("app -> tooling (type:app may not depend on type:tooling)")
-            && stderr(&output).contains("remove the edge"),
         "stderr: {}",
         stderr(&output)
     );
@@ -138,6 +139,14 @@ fn a_malformed_graph_is_refused() {
             r#"{"graph":{"nodes":{"a":{"data":{}}},"dependencies":{"a":[]}}}"#,
             "a has no tags list of strings",
         ),
+        (
+            r#"{"graph":{"nodes":{"a":{"data":{"tags":[]}}},"dependencies":{"a":[{"target":7}]}}}"#,
+            "names no project in the graph",
+        ),
+        (
+            r#"{"graph":{"nodes":{"a":{"data":{"tags":[]}}},"dependencies":{"a":[{"target":"ghost"}]}}}"#,
+            "names no project in the graph",
+        ),
     ] {
         let output = run_with_graph(Some(graph));
         assert_eq!(output.status.code(), Some(1), "graph: {graph}");
@@ -147,4 +156,108 @@ fn a_malformed_graph_is_refused() {
             stderr(&output)
         );
     }
+}
+
+/// The graph shape the script reads is Nx's own: the real `nx graph` over this workspace
+/// (installed by `just bootstrap`) must write a graph whose nodes carry tag lists and
+/// whose dependencies are lists of `{target}` edges, and the script must pass it.
+#[test]
+fn the_real_nx_graph_has_the_shape_the_script_reads_and_passes() {
+    let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
+    let nx = root.join("node_modules/.bin/nx");
+    assert!(nx.is_file(), "run 'just bootstrap' so Nx is installed");
+    let out = tempfile::tempdir().expect("a directory for the graph");
+    let file = out.path().join("graph.json");
+    let status = std::process::Command::new(&nx)
+        .arg("graph")
+        .arg(format!("--file={}", file.display()))
+        .current_dir(&root)
+        .env("NX_DAEMON", "false")
+        .stdout(std::process::Stdio::null())
+        .status()
+        .expect("nx runs");
+    assert!(status.success(), "nx graph failed");
+    let graph: serde_norway::Value =
+        serde_norway::from_str(&std::fs::read_to_string(&file).expect("the graph")).expect("JSON");
+    let nodes = graph["graph"]["nodes"].as_mapping().expect("a nodes map");
+    assert!(nodes.contains_key("cargo-prune-superseded"));
+    for (name, node) in nodes {
+        assert!(
+            node["data"]["tags"]
+                .as_sequence()
+                .is_some_and(|tags| tags.iter().all(serde_norway::Value::is_string)),
+            "{name:?} has no tags list"
+        );
+    }
+    let dependencies = graph["graph"]["dependencies"]
+        .as_mapping()
+        .expect("a dependencies map");
+    let e2e = dependencies[&serde_norway::Value::from("cargo-prune-superseded-e2e")]
+        .as_sequence()
+        .expect("a list of edges");
+    assert!(
+        e2e.iter()
+            .any(|edge| edge["target"].as_str() == Some("cargo-prune-superseded")),
+        "the e2e project's edge onto the binary is a {{target}} entry"
+    );
+    let verdict = std::process::Command::new("node")
+        .arg(root.join("tools/check-boundaries.mjs"))
+        .current_dir(&root)
+        .output()
+        .expect("node runs the script");
+    assert_eq!(
+        verdict.status.code(),
+        Some(0),
+        "stderr: {}",
+        stderr(&verdict)
+    );
+}
+
+#[test]
+fn a_graph_file_that_cannot_be_read_or_removed_reports_both() {
+    let output = run_with_nx(None, true);
+    assert_eq!(output.status.code(), Some(1));
+    let stderr = stderr(&output);
+    assert!(
+        stderr.contains("could not read the Nx project graph"),
+        "stderr: {stderr}"
+    );
+    assert!(stderr.contains("delete it by hand"), "stderr: {stderr}");
+}
+
+#[test]
+fn a_graph_file_that_cannot_be_removed_fails_a_passing_check() {
+    let workspace = tempfile::tempdir().expect("a workspace");
+    let bin = workspace.path().join("node_modules/.bin");
+    std::fs::create_dir_all(&bin).expect("node_modules/.bin");
+    let tmp = workspace.path().join("tmp");
+    std::fs::create_dir(&tmp).expect("a TMPDIR");
+    let served = workspace.path().join("graph.json");
+    std::fs::write(&served, graph(PROJECTS, &[("app-e2e", "app")])).expect("a graph");
+    // llmlint: ignore-block[e2e_not_mocked] the graph Nx computes is this script's input; this stub serves a valid one and then makes its directory read-only, so only the cleanup can fail.
+    let nx = bin.join("nx");
+    std::fs::write(
+        &nx,
+        format!(
+            "#!/usr/bin/env bash\nfor arg in \"$@\"; do case \"$arg\" in --file=*) cp {served:?} \"${{arg#--file=}}\";; esac; done\nchmod a-w {tmp:?}\n",
+            served = served.display().to_string(),
+            tmp = tmp.display().to_string()
+        ),
+    )
+    .expect("the nx stub");
+    // llmlint: ignore-end[e2e_not_mocked]
+    std::fs::set_permissions(&nx, std::fs::Permissions::from_mode(0o755)).expect("+x");
+    let output = std::process::Command::new("node")
+        .arg(Path::new(env!("CARGO_MANIFEST_DIR")).join("../../tools/check-boundaries.mjs"))
+        .current_dir(workspace.path())
+        .env("TMPDIR", &tmp)
+        .output()
+        .expect("node runs the script");
+    std::fs::set_permissions(&tmp, std::fs::Permissions::from_mode(0o755)).expect("restore");
+    assert_eq!(output.status.code(), Some(1), "stderr: {}", stderr(&output));
+    assert!(
+        stderr(&output).contains("delete it by hand"),
+        "stderr: {}",
+        stderr(&output)
+    );
 }

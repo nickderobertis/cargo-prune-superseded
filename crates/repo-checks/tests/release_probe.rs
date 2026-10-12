@@ -478,3 +478,14 @@ fn a_declared_id_followed_by_anything_but_a_comment_is_not_answered() {
     );
     assert_not_answered(&output, "after the string");
 }
+
+#[test]
+fn a_declaration_whose_last_line_has_no_newline_is_read() {
+    let registry = Registry::answering("200", &crate_document(r#""0.3.1""#));
+    let output = registry.ask_in_checkout(
+        Some("[[target]]\nid = \"crate:cargo-prune-superseded\""),
+        TARGET,
+    );
+    assert_eq!(output.status.code(), Some(0), "stderr: {}", stderr(&output));
+    assert_eq!(stdout(&output), "0.3.1\n");
+}

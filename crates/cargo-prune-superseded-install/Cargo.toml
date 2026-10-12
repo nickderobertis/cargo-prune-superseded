@@ -1,0 +1,14 @@
+[package]
+name = "cargo-prune-superseded-install"
+description = "The end-user install path: smoke.sh installs the crate as crates.io would serve it, and its journeys drive each verdict."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish = false
+
+[dev-dependencies]
+tempfile.workspace = true
+
+[lints]
+workspace = true

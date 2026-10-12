@@ -1,0 +1,14 @@
+{
+  "$schema": "../../node_modules/nx/schemas/project-schema.json",
+  "name": "coverage",
+  "projectType": "library",
+  "tags": ["lang:bash", "type:tooling"],
+  "implicitDependencies": [],
+  "//": "The coverage floor the measured crates' test targets run through. repo-checks drives it.",
+  "targets": {
+    "lint": {
+      "executor": "nx:run-commands",
+      "options": { "command": "shellcheck tools/coverage/rust-coverage.sh" }
+    }
+  }
+}

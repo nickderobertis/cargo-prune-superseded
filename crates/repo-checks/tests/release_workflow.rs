@@ -6,9 +6,9 @@
 //!
 //! These assertions are structural by necessity: running the workflow for real publishes
 //! to crates.io, tags and cuts a release in the live repository with secrets this suite
-//! never holds, and none of that can be undone. The pipeline short of publishing is
-//! driven by hand with `release-plz update` and `release-plz release --dry-run` against
-//! this same configuration; these checks hold the wiring that run depends on.
+//! never holds, and none of that can be undone. Even `release-plz release --dry-run`
+//! needs a forge token and the network, which this offline suite has neither of; these
+//! checks hold the wiring that run depends on.
 
 #![cfg(unix)]
 

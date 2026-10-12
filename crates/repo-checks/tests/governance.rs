@@ -133,3 +133,33 @@ fn the_llmlint_job_installs_a_harness_oneharness_falls_back_to() {
         "the llmlint job must install a harness oneharness.toml lists ({harnesses:?}); installs {installed:?}"
     );
 }
+
+/// gh-secrets.json syncs exactly the secrets the workflows read (besides the token GitHub
+/// provides), so no credential reaches the repository that nothing uses.
+#[test]
+fn the_synced_secrets_are_exactly_those_the_workflows_read() {
+    let manifest: serde_norway::Value =
+        serde_norway::from_str(&read("gh-secrets.json")).expect("gh-secrets.json is valid JSON");
+    let mut declared: Vec<String> = manifest["secrets"]
+        .as_sequence()
+        .expect("a secrets list")
+        .iter()
+        .map(|secret| secret["name"].as_str().expect("a secret name").to_owned())
+        .collect();
+    declared.sort();
+    let mut read_by_workflows: Vec<String> = Vec::new();
+    for entry in std::fs::read_dir(root().join(".github/workflows")).expect("the workflows") {
+        let text = std::fs::read_to_string(entry.expect("a workflow").path()).expect("readable");
+        for (index, _) in text.match_indices("secrets.") {
+            let name: String = text[index + "secrets.".len()..]
+                .chars()
+                .take_while(|c| c.is_ascii_alphanumeric() || *c == '_')
+                .collect();
+            if name != "GITHUB_TOKEN" && !read_by_workflows.contains(&name) {
+                read_by_workflows.push(name);
+            }
+        }
+    }
+    read_by_workflows.sort();
+    assert_eq!(declared, read_by_workflows);
+}

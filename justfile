@@ -15,9 +15,9 @@ base := if _nx_base_input =~ '^[A-Za-z0-9._/-]+$' { _nx_base_input } else { erro
 default:
     @just --list
 
-# Set up from a clean clone: Nx's locked Node toolchain, the pinned Rust toolchain, the
-# locked crates, and cargo-llvm-cov and cargo-nextest.
-bootstrap:
+# Set up from a clean clone: the locked crates, Nx's locked Node toolchain, the pinned
+# Rust toolchain, and cargo-llvm-cov and cargo-nextest.
+bootstrap: fetch
     @bash scripts/bootstrap.sh
 
 # The full gate at a tier: `affected` (default) is what a change can reach; `all` is the
@@ -43,12 +43,12 @@ test-e2e:
 
 # Download the locked crates into cargo's cache (what the offline install smoke builds from).
 fetch:
-    cargo fetch --locked
+    @cargo fetch --locked --quiet
 
 # The end-user install path: package the crate as crates.io would serve it, install it
 # locked into an empty root, run the installed binary. Its own CI job, outside `check`.
 install-smoke:
-    @bash install/smoke.sh
+    @bash crates/cargo-prune-superseded-install/smoke.sh
 
 # Lint and type check the projects this change can reach: clippy -D warnings, cargo
 # check, shellcheck, actionlint and the project-boundary check.

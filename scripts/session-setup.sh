@@ -48,9 +48,24 @@ persist_session_env() {
   [ -n "${CLAUDE_ENV_FILE:-}" ] || return 0
   case ":${ORIG_PATH}:" in
     *":${BIN_DIR}:"*) ;;
-    *) if ! error="$( { printf 'export PATH=%q\n' "${BIN_DIR}:${PATH}" >> "$CLAUDE_ENV_FILE"; } 2>&1 )"; then
-         log "could not write PATH to the session env file $CLAUDE_ENV_FILE (${error##*: }); check that it is writable, then re-run"
-       fi ;;
+    *)
+      line="$(printf 'export PATH=%q' "${BIN_DIR}:${ORIG_PATH}")"
+      # Idempotent: a re-run in the same session appends nothing new. A last line left
+      # without its newline is read too, and the new line is started on a line of its own.
+      separator=""
+      if [ -r "$CLAUDE_ENV_FILE" ]; then
+        existing=""
+        while IFS= read -r existing; do
+          [ "$existing" != "$line" ] || return 0
+        done < "$CLAUDE_ENV_FILE"
+        if [ -n "$existing" ]; then
+          [ "$existing" != "$line" ] || return 0
+          separator=$'\n'
+        fi
+      fi
+      if ! error="$( { printf '%s%s\n' "$separator" "$line" >> "$CLAUDE_ENV_FILE"; } 2>&1 )"; then
+        log "could not write PATH to the session env file $CLAUDE_ENV_FILE (${error##*: }); check that it is writable, then re-run"
+      fi ;;
   esac
 }
 
@@ -59,9 +74,12 @@ verify_prereqs
 persist_session_env
 
 setup_llmlint="$(dirname "$0")/setup-llmlint.sh"
-# setup-llmlint.sh reports its own problems and always exits 0, so its status is not read.
+# Run directly rather than through `just setup-llmlint`: this hook may be what installs
+# just. The installer reports its own problems and exits 0, so a non-zero status means it
+# could not run at all (a corrupt checkout, say).
 if [ -x "$setup_llmlint" ]; then
-  "$setup_llmlint"
+  # llmlint: ignore[work_goes_through_command_surface] the SessionStart hook runs before `just` is guaranteed to exist (it may be installing it), so it cannot go through `just setup-llmlint`.
+  "$setup_llmlint" || log "$setup_llmlint could not run (above); restore it from git (git checkout -- scripts/), then re-run"
 else
   log "$setup_llmlint is missing or not executable; restore it from git (chmod +x), then re-run"
 fi

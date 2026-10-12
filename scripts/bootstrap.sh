@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # Set up a clean clone: the locked Node toolchain Nx runs on, the pinned Rust toolchain
-# and the locked crates, and the cargo test tools the gate runs. Idempotent and quiet.
+# and the cargo test tools the gate runs (`just bootstrap` fetches the locked crates first,
+# through `just fetch`). Idempotent and quiet.
 set -euo pipefail
 cd "$(dirname "${BASH_SOURCE[0]}")/.." || { echo "bootstrap: cannot enter the repository root; run scripts/bootstrap.sh from a checkout." >&2; exit 1; }
 
@@ -24,7 +25,6 @@ run bun install --frozen-lockfile
 if command -v rustup >/dev/null 2>&1; then
   run rustup toolchain install
 fi
-run cargo fetch --locked
 for tool in cargo-llvm-cov cargo-nextest; do
   command -v "$tool" >/dev/null 2>&1 || run cargo install --locked "$tool"
 done

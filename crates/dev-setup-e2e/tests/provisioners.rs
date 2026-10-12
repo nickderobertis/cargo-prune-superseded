@@ -119,8 +119,17 @@ impl Sandbox {
     }
     // llmlint: ignore-end[e2e_not_mocked]
 
+    // llmlint: ignore-block[e2e_not_mocked] a real `llmlint doctor` probes an authenticated coding harness, which this offline tier has none of; these stubs stand only for its two answers.
+    /// An `llmlint` whose `doctor` succeeds and says so on stdout.
+    fn llmlint_doctor_passing_loudly(&self) -> &Self {
+        executable(
+            &self.stubs.path().join("llmlint"),
+            "#!/usr/bin/env bash\necho 'oneharness: claude-code ready'\nexit 0\n",
+        );
+        self
+    }
+
     /// An `llmlint` whose `doctor` fails, saying why.
-    // llmlint: ignore-block[e2e_not_mocked] a real `llmlint doctor` probes an authenticated coding harness, which this offline tier has none of; the stub stands only for that answer.
     fn llmlint_doctor_failing(&self) -> &Self {
         executable(
             &self.stubs.path().join("llmlint"),
@@ -461,4 +470,209 @@ fn session_setup_reports_a_missing_llmlint_installer() {
         "stderr: {}",
         stderr(&output)
     );
+}
+
+const PROVISIONERS: [&str; 2] = ["session-setup.sh", "setup-llmlint.sh"];
+
+#[test]
+fn a_second_run_persists_nothing_new() {
+    for script in PROVISIONERS {
+        let sandbox = Sandbox::new();
+        sandbox.uv(true).present("cargo").present("bun");
+        assert_quiet_success(&sandbox.run(script, &[]));
+        let first = sandbox.env_file();
+        assert_quiet_success(&sandbox.run(script, &[]));
+        assert_eq!(
+            sandbox.env_file(),
+            first,
+            "{script}: a re-run appends no second PATH line"
+        );
+        assert_eq!(first.lines().count(), 1, "{script}");
+    }
+}
+
+#[test]
+fn a_session_env_file_that_becomes_writable_is_written_on_the_next_run() {
+    for script in PROVISIONERS {
+        let sandbox = Sandbox::new();
+        sandbox.uv(true).present("cargo").present("bun");
+        let dir = sandbox.home.path().join("session");
+        let env_file = dir.join("env");
+        let env_file = env_file.to_str().expect("a utf-8 path");
+        let failed = sandbox.run(script, &[("CLAUDE_ENV_FILE", env_file)]);
+        assert!(
+            stderr(&failed).contains("could not write PATH"),
+            "{script}: {}",
+            stderr(&failed)
+        );
+        std::fs::create_dir(&dir).expect("the session directory now exists");
+        assert_quiet_success(&sandbox.run(script, &[("CLAUDE_ENV_FILE", env_file)]));
+        assert!(
+            std::fs::read_to_string(env_file)
+                .expect("the env file was written")
+                .starts_with("export PATH="),
+            "{script}"
+        );
+    }
+}
+
+#[test]
+fn session_setup_installs_just_on_the_run_after_a_failed_install() {
+    let sandbox = Sandbox::new();
+    sandbox.uv(false).present("cargo").present("bun");
+    let failed = sandbox.run("session-setup.sh", &[]);
+    assert_eq!(failed.status.code(), Some(0), "startup is never blocked");
+    assert!(
+        stderr(&failed).contains("rust-just install failed"),
+        "stderr: {}",
+        stderr(&failed)
+    );
+    assert!(!sandbox.bin_dir().join("just").exists());
+    sandbox.uv(true);
+    assert_quiet_success(&sandbox.run("session-setup.sh", &[]));
+    assert!(
+        sandbox.bin_dir().join("just").is_file(),
+        "just is installed on the retry"
+    );
+}
+
+#[test]
+fn setup_llmlint_recovers_on_the_run_after_a_failed_install() {
+    let sandbox = Sandbox::new();
+    sandbox.uv(false);
+    let failed = sandbox.run("setup-llmlint.sh", &[]);
+    assert!(
+        stderr(&failed).contains("llmlint-cli install failed"),
+        "stderr: {}",
+        stderr(&failed)
+    );
+    sandbox.uv(true);
+    assert_quiet_success(&sandbox.run("setup-llmlint.sh", &[]));
+    assert!(sandbox.bin_dir().join("llmlint").is_file());
+}
+
+#[test]
+fn a_passing_doctor_stays_silent() {
+    let sandbox = Sandbox::new();
+    sandbox.uv(false).llmlint_doctor_passing_loudly();
+    let output = sandbox.run("setup-llmlint.sh", &[]);
+    assert_eq!(output.status.code(), Some(0));
+    let stderr = stderr(&output);
+    assert!(
+        !stderr.contains("claude-code ready"),
+        "doctor's success is not echoed: {stderr}"
+    );
+    assert_eq!(output.stdout, b"");
+}
+
+#[test]
+fn session_setup_reports_an_installer_that_cannot_run() {
+    let sandbox = Sandbox::new();
+    sandbox.present("just").present("cargo").present("bun");
+    let (dir, copy) = session_setup_alone();
+    // The real installer with Windows line endings, as a checkout without
+    // `* text=auto eol=lf` would leave it: its interpreter line names `bash\r`.
+    let installer = std::fs::read_to_string(script("setup-llmlint.sh"))
+        .expect("the installer")
+        .replace('\n', "\r\n");
+    executable(&dir.path().join("setup-llmlint.sh"), &installer);
+    let output = run_copy(&sandbox, &copy);
+    assert_eq!(output.status.code(), Some(0), "startup is never blocked");
+    assert!(
+        stderr(&output).contains("setup-llmlint.sh could not run (above); restore it from git"),
+        "stderr: {}",
+        stderr(&output)
+    );
+}
+
+#[test]
+fn a_repaired_doctor_clears_the_diagnostic_on_the_next_run() {
+    let sandbox = Sandbox::new();
+    sandbox.uv(false).llmlint_doctor_failing();
+    let failing = sandbox.run("setup-llmlint.sh", &[]);
+    assert!(
+        stderr(&failing).contains("llmlint doctor reported an issue"),
+        "stderr: {}",
+        stderr(&failing)
+    );
+    sandbox.llmlint_doctor_passing_loudly();
+    let repaired = sandbox.run("setup-llmlint.sh", &[]);
+    assert_eq!(repaired.status.code(), Some(0));
+    assert!(
+        !stderr(&repaired).contains("llmlint doctor reported an issue"),
+        "stderr: {}",
+        stderr(&repaired)
+    );
+}
+
+#[test]
+fn either_provisioner_without_a_session_env_file_installs_quietly() {
+    for script in PROVISIONERS {
+        let sandbox = Sandbox::new();
+        sandbox.uv(true).present("cargo").present("bun");
+        let output = std::process::Command::new(script_path(script))
+            .env_clear()
+            .env("HOME", sandbox.home.path())
+            .env("PATH", sandbox.path())
+            .output_retrying()
+            .expect("the script runs");
+        assert_quiet_success(&output);
+        assert!(
+            sandbox.bin_dir().join("llmlint").is_file(),
+            "{script} installed llmlint"
+        );
+        assert!(
+            !sandbox.env_file.exists(),
+            "{script} wrote no session env file"
+        );
+    }
+}
+
+#[test]
+fn a_restored_llmlint_installer_clears_the_diagnostic() {
+    let sandbox = Sandbox::new();
+    sandbox
+        .uv(true)
+        .present("just")
+        .present("cargo")
+        .present("bun");
+    let (dir, copy) = session_setup_alone();
+    let missing = run_copy(&sandbox, &copy);
+    assert!(
+        stderr(&missing).contains("is missing or not executable"),
+        "stderr: {}",
+        stderr(&missing)
+    );
+    let installer = dir.path().join("setup-llmlint.sh");
+    std::fs::copy(script("setup-llmlint.sh"), &installer).expect("restore the installer");
+    std::fs::set_permissions(&installer, std::fs::Permissions::from_mode(0o755)).expect("+x");
+    assert_quiet_success(&run_copy(&sandbox, &copy));
+    assert!(sandbox.bin_dir().join("llmlint").is_file());
+}
+
+#[test]
+fn existing_session_exports_survive_and_an_unterminated_last_line_stays_separate() {
+    for script in PROVISIONERS {
+        let sandbox = Sandbox::new();
+        sandbox.uv(true).present("cargo").present("bun");
+        std::fs::write(&sandbox.env_file, "export EARLIER=1\nexport LAST=2").expect("an env file");
+        assert_quiet_success(&sandbox.run(script, &[]));
+        let later = std::process::Command::new(sandbox.tools.path().join("bash"))
+            .args([
+                "-c",
+                "source \"$1\" && printf '%s %s ' \"$EARLIER\" \"$LAST\" && command -v llmlint",
+                "bash",
+            ])
+            .arg(&sandbox.env_file)
+            .env_clear()
+            .env("PATH", sandbox.path())
+            .output_retrying()
+            .expect("a later shell runs");
+        assert_eq!(later.status.code(), Some(0), "{script}: {}", stderr(&later));
+        assert_eq!(
+            String::from_utf8(later.stdout).expect("utf-8"),
+            format!("1 2 {}/llmlint\n", sandbox.bin_dir().display()),
+            "{script}"
+        );
+    }
 }

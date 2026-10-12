@@ -3,6 +3,7 @@ resolver = "3"
 members = [
     "crates/cargo-prune-superseded",
     "crates/cargo-prune-superseded-e2e",
+    "crates/cargo-prune-superseded-install",
     "crates/dev-setup-e2e",
     "crates/repo-checks",
 ]

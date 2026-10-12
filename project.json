@@ -10,21 +10,22 @@
     "coverage-clear": {
       "executor": "nx:run-commands",
       "options": {
-        "command": "bash scripts/rust-coverage.sh --clear"
+        "command": "bash tools/coverage/rust-coverage.sh --clear"
       },
       "cache": false
     },
     "coverage": {
       "executor": "nx:run-commands",
       "options": {
-        "command": "bash scripts/rust-coverage.sh --report"
+        "command": "bash tools/coverage/rust-coverage.sh --report"
       },
       "cache": false,
       "dependsOn": [
         {
           "target": "test",
           "projects": [
-            "tag:lang:rust"
+            "cargo-prune-superseded",
+            "cargo-prune-superseded-e2e"
           ]
         }
       ],
@@ -35,7 +36,7 @@
       "options": {
         "commands": [
           "actionlint",
-          "node scripts/check-boundaries.mjs"
+          "node tools/check-boundaries.mjs"
         ],
         "parallel": false
       },
@@ -43,7 +44,7 @@
         "{workspaceRoot}/.github/workflows/*",
         "{workspaceRoot}/**/project.json",
         "{workspaceRoot}/nx.json",
-        "{workspaceRoot}/scripts/check-boundaries.mjs"
+        "{workspaceRoot}/tools/check-boundaries.mjs"
       ],
       "cache": true
     },
@@ -61,9 +62,13 @@
     "msrv": {
       "executor": "nx:run-commands",
       "options": {
-        "command": "bash scripts/msrv.sh"
+        "command": "bash tools/msrv.sh"
       },
       "cache": false
     }
-  }
+  },
+  "implicitDependencies": [
+    "tools",
+    "coverage"
+  ]
 }

@@ -34,9 +34,24 @@ persist_session_env() {
   [ -n "${CLAUDE_ENV_FILE:-}" ] || return 0
   case ":${PATH}:" in
     *":${BIN_DIR}:"*) ;;
-    *) if ! error="$( { printf 'export PATH=%q\n' "${BIN_DIR}:${PATH}" >> "$CLAUDE_ENV_FILE"; } 2>&1 )"; then
-         log "could not write PATH to the session env file $CLAUDE_ENV_FILE (${error##*: }); check that it is writable, then re-run"
-       fi ;;
+    *)
+      line="$(printf 'export PATH=%q' "${BIN_DIR}:${PATH}")"
+      # Idempotent: a re-run in the same session appends nothing new. A last line left
+      # without its newline is read too, and the new line is started on a line of its own.
+      separator=""
+      if [ -r "$CLAUDE_ENV_FILE" ]; then
+        existing=""
+        while IFS= read -r existing; do
+          [ "$existing" != "$line" ] || return 0
+        done < "$CLAUDE_ENV_FILE"
+        if [ -n "$existing" ]; then
+          [ "$existing" != "$line" ] || return 0
+          separator=$'\n'
+        fi
+      fi
+      if ! error="$( { printf '%s%s\n' "$separator" "$line" >> "$CLAUDE_ENV_FILE"; } 2>&1 )"; then
+        log "could not write PATH to the session env file $CLAUDE_ENV_FILE (${error##*: }); check that it is writable, then re-run"
+      fi ;;
   esac
 }
 

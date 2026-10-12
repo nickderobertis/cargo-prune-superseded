@@ -1,0 +1,19 @@
+{
+  "$schema": "../node_modules/nx/schemas/project-schema.json",
+  "name": "tools",
+  "projectType": "library",
+  "tags": [
+    "lang:bash",
+    "type:tooling"
+  ],
+  "implicitDependencies": [],
+  "//": "The gate's own tooling: the MSRV build and the project-boundary check. repo-checks drives each.",
+  "targets": {
+    "lint": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "shellcheck tools/*.sh"
+      }
+    }
+  }
+}

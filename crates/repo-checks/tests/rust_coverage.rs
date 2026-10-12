@@ -1,4 +1,4 @@
-//! `scripts/rust-coverage.sh`, run from a scratch copy of the repository layout (so its
+//! `tools/coverage/rust-coverage.sh`, run from a scratch copy of the repository layout (so its
 //! run markers never touch this checkout's real coverage run) with a recording `cargo`
 //! first on PATH. cargo-llvm-cov is the tool the script orchestrates; its own
 //! instrumentation is proven by the gate's real coverage run, so here each journey asserts
@@ -20,10 +20,10 @@ impl Checkout {
     /// `failing` names the cargo subcommand words (e.g. `"llvm-cov report"`) that exit 1.
     fn new(failing: &[&str]) -> Self {
         let root = tempfile::tempdir().expect("a checkout");
-        std::fs::create_dir(root.path().join("scripts")).expect("scripts/");
-        let script = root.path().join("scripts/rust-coverage.sh");
+        std::fs::create_dir_all(root.path().join("tools/coverage")).expect("tools/coverage/");
+        let script = root.path().join("tools/coverage/rust-coverage.sh");
         std::fs::copy(
-            Path::new(env!("CARGO_MANIFEST_DIR")).join("../../scripts/rust-coverage.sh"),
+            Path::new(env!("CARGO_MANIFEST_DIR")).join("../../tools/coverage/rust-coverage.sh"),
             &script,
         )
         .expect("the script");
@@ -43,7 +43,7 @@ impl Checkout {
             &cargo,
             format!(
                 "#!/usr/bin/env bash\necho \"$*\" >>{log:?}\n{failures}\nexit 0\n",
-                log = root.path().join("cargo-calls").display().to_string()
+                log = root.path().join("cargo-calls").display().to_string(),
             ),
         )
         .expect("the cargo stub");
@@ -52,17 +52,29 @@ impl Checkout {
         Self { root, bin }
     }
 
+    /// Makes every later cargo call succeed (the repaired tool).
+    fn cargo_succeeds(&self) {
+        let cargo = self.bin.path().join("cargo");
+        let body = std::fs::read_to_string(&cargo).expect("the cargo stub");
+        let repaired: Vec<&str> = body
+            .lines()
+            .filter(|line| !line.contains(": failed"))
+            .collect();
+        std::fs::write(&cargo, repaired.join("\n") + "\n").expect("the repaired stub");
+    }
+
     fn run(&self, request: &str) -> Output {
         let mut attempts = 0;
         loop {
-            let result =
-                std::process::Command::new(self.root.path().join("scripts/rust-coverage.sh"))
-                    .arg(request)
-                    .env(
-                        "PATH",
-                        format!("{}:/usr/bin:/bin", self.bin.path().display()),
-                    )
-                    .output();
+            let result = std::process::Command::new(
+                self.root.path().join("tools/coverage/rust-coverage.sh"),
+            )
+            .arg(request)
+            .env(
+                "PATH",
+                format!("{}:/usr/bin:/bin", self.bin.path().display()),
+            )
+            .output();
             match result {
                 // ETXTBSY: another test thread forked while a stub was being written.
                 Err(error) if error.raw_os_error() == Some(26) && attempts < 100 => {
@@ -133,7 +145,7 @@ fn clearing_empties_the_profiles_and_the_run_markers() {
 }
 
 #[test]
-fn the_report_holds_the_floor_only_over_runs_since_the_clear() {
+fn the_report_holds_the_floor_only_once_a_suite_has_run() {
     let checkout = Checkout::new(&[]);
     let skipped = checkout.run("--report");
     assert_eq!(skipped.status.code(), Some(0));
@@ -149,7 +161,7 @@ fn the_report_holds_the_floor_only_over_runs_since_the_clear() {
 
 #[test]
 fn a_report_below_the_floor_fails_with_what_to_do() {
-    let checkout = Checkout::new(&["llvm-cov report"]);
+    let checkout = Checkout::new(&["llvm-cov report --summary-only --show-missing-lines"]);
     checkout.run("some-crate");
     let output = checkout.run("--report");
     assert_eq!(output.status.code(), Some(1));
@@ -181,4 +193,77 @@ fn an_argument_that_is_not_a_package_name_is_a_usage_error() {
         assert!(stderr(&output).contains("pass a workspace member's package name"));
     }
     assert_eq!(checkout.calls(), Vec::<String>::new());
+}
+
+#[test]
+fn anything_but_exactly_one_argument_is_a_usage_error() {
+    let checkout = Checkout::new(&[]);
+    for args in [&[][..], &["--clear", "extra"][..]] {
+        let output = std::process::Command::new(
+            checkout.root.path().join("tools/coverage/rust-coverage.sh"),
+        )
+        .args(args)
+        .env(
+            "PATH",
+            format!("{}:/usr/bin:/bin", checkout.bin.path().display()),
+        )
+        .output()
+        .expect("the script runs");
+        assert_eq!(output.status.code(), Some(64), "args: {args:?}");
+        assert!(stderr(&output).contains("takes exactly one argument"));
+    }
+    assert_eq!(checkout.calls(), Vec::<String>::new());
+}
+
+#[test]
+fn a_failed_clear_keeps_the_markers_and_a_later_clear_recovers() {
+    let failing = Checkout::new(&["llvm-cov clean"]);
+    failing.run("some-crate");
+    let output = failing.run("--clear");
+    assert_eq!(output.status.code(), Some(1));
+    assert!(
+        stderr(&output).contains("could not clear cargo-llvm-cov's profiles"),
+        "stderr: {}",
+        stderr(&output)
+    );
+    assert!(
+        failing.marker("some-crate").is_file(),
+        "a failed clear leaves the record of runs"
+    );
+    failing.cargo_succeeds();
+    let recovered = failing.run("--clear");
+    assert_eq!(
+        recovered.status.code(),
+        Some(0),
+        "stderr: {}",
+        stderr(&recovered)
+    );
+    assert!(
+        !failing.marker("some-crate").exists(),
+        "the later clear empties the runs"
+    );
+}
+
+#[test]
+fn a_run_marker_that_cannot_be_written_is_reported_and_recovers() {
+    let checkout = Checkout::new(&[]);
+    let runs = checkout.root.path().join("target/coverage-runs");
+    std::fs::create_dir_all(runs.parent().expect("target/")).expect("target/");
+    std::fs::write(&runs, "not a directory").expect("a file where the marker dir goes");
+    let output = checkout.run("some-crate");
+    assert_eq!(output.status.code(), Some(1));
+    assert!(
+        stderr(&output).contains("could not record some-crate's run"),
+        "stderr: {}",
+        stderr(&output)
+    );
+    std::fs::remove_file(&runs).expect("repair target/");
+    let retried = checkout.run("some-crate");
+    assert_eq!(
+        retried.status.code(),
+        Some(0),
+        "stderr: {}",
+        stderr(&retried)
+    );
+    assert!(checkout.marker("some-crate").is_file());
 }

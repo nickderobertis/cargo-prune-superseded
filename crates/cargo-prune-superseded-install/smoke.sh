@@ -1,14 +1,15 @@
 #!/usr/bin/env bash
 # The end-user install path, from the exact archive crates.io would serve: package the
-# crate (`cargo package` verifies it builds from the archive alone), install it locked
-# from that archive into an empty root outside the clone, and run the installed binary
-# from that root. Until a release exists, that archive stands in for the README's
+# crate as the working tree stands (`cargo package` verifies it builds from the archive
+# alone), install it locked from that archive into an empty root outside the clone, and
+# run the installed binary from that root. Until a release exists, that archive stands in for the README's
 # `cargo install --locked cargo-prune-superseded`. Offline: it builds from the crates
 # `cargo fetch --locked` (in `just bootstrap`) already cached, so it contacts no registry.
-# Quiet on success; on failure the step, its output and what to do.
+# Quiet on success; on failure the step, its output and what to do. tests/smoke.rs drives
+# each verdict.
 set -euo pipefail
 
-root_dir="$(dirname "${BASH_SOURCE[0]}")/.."
+root_dir="$(dirname "${BASH_SOURCE[0]}")/../.."
 cd "$root_dir" || { echo "install-smoke: cannot enter $root_dir; run it from a checkout of the repository." >&2; exit 1; }
 
 readonly CRATE="cargo-prune-superseded"
@@ -20,15 +21,25 @@ fail() {
   exit 1
 }
 
-version="$(cargo pkgid -p "$CRATE" 2>&1)" \
-  || fail "cannot read $CRATE's version (above)." "run 'cargo pkgid -p $CRATE' from the repository root and fix what it reports." "$version"
-version="${version##*[#@]}"
-log="$(cargo package --locked --offline -p "$CRATE" 2>&1)" \
-  || fail "'cargo package' failed (above): the crate does not build from its published archive." "run 'cargo fetch --locked' if a crate is missing from the cache, or add any file the build needs to the package (Cargo.toml include/exclude), then re-run 'just install-smoke'." "$log"
+if ! pkgid="$(cargo pkgid -p "$CRATE" 2>/dev/null)"; then
+  fail "cannot read $CRATE's version (above)." "run 'cargo pkgid -p $CRATE' from the repository root and fix what it reports." "$(cargo pkgid -p "$CRATE" 2>&1)"
+fi
+version="${pkgid##*[#@]}"
+[[ $version =~ ^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$ ]] \
+  || fail "cargo pkgid answered '$pkgid', which ends in no plain X.Y.Z version." "set a plain X.Y.Z version in Cargo.toml's [workspace.package]." ""
+log="$(cargo package --locked --offline --allow-dirty -p "$CRATE" 2>&1)" \
+  || fail "'cargo package' failed (above): the crate does not build from its published archive." "run 'just fetch' if a crate is missing from the cache, or add any file the build needs to the package (Cargo.toml include/exclude), then re-run 'just install-smoke'." "$log"
 
-install_root="$(mktemp -d 2>&1)" \
+install_root="$(mktemp -d "${TMPDIR:-/tmp}/cargo-prune-superseded-install.XXXXXX" 2>&1)" \
   || fail "cannot create a temporary install root (above)." "free space or fix TMPDIR, then re-run 'just install-smoke'." "$install_root"
-trap 'rm -rf "$install_root" || echo "install-smoke: remove $install_root by hand." >&2' EXIT
+cleanup() {
+  local error
+  if ! error="$(rm -rf "$install_root" 2>&1)"; then
+    echo "install-smoke: could not remove $install_root ($error); remove it by hand." >&2
+    exit 1
+  fi
+}
+trap cleanup EXIT
 log="$(cargo install --locked --offline --root "$install_root" --path "target/package/$CRATE-$version" 2>&1)" \
   || fail "installing the packaged crate failed (above)." "fix the build error it names (Cargo.lock must be committed and current), then re-run 'just install-smoke'." "$log"
 
