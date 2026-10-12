@@ -61,7 +61,7 @@ case "$REQUEST" in
     # A package name, as cargo spells one; cargo itself refuses a name that is not a
     # workspace member, so the member list is stated nowhere here.
     case "$REQUEST" in
-      *[!A-Za-z0-9_-]*)
+      "" | *[!A-Za-z0-9_-]*)
         echo "rust-coverage: '$REQUEST' is not a package name; pass a workspace member's package name, --clear or --report." >&2
         exit 64
         ;;

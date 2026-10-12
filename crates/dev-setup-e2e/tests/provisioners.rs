@@ -676,3 +676,43 @@ fn existing_session_exports_survive_and_an_unterminated_last_line_stays_separate
         );
     }
 }
+
+/// The `SessionStart` hook exactly as `.claude/settings.json` configures it: its matcher
+/// covers a fresh and a resumed session, and its command, run by a shell with
+/// `CLAUDE_PROJECT_DIR` set to this checkout, provisions the session quietly.
+#[test]
+fn the_configured_session_start_hook_provisions_quietly() {
+    let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
+    let settings: serde_norway::Value = serde_norway::from_str(
+        &std::fs::read_to_string(root.join(".claude/settings.json")).expect("the settings"),
+    )
+    .expect("the settings are valid JSON");
+    let entries = settings["hooks"]["SessionStart"]
+        .as_sequence()
+        .expect("a SessionStart hook list");
+    assert_eq!(entries.len(), 1, "one SessionStart entry");
+    assert_eq!(entries[0]["matcher"].as_str(), Some("startup|resume"));
+    let command = entries[0]["hooks"][0]["command"]
+        .as_str()
+        .expect("the hook's command");
+    let sandbox = Sandbox::new();
+    sandbox.uv(true).present("cargo").present("bun");
+    let output = std::process::Command::new(sandbox.tools.path().join("bash"))
+        .args(["-c", command])
+        .env_clear()
+        .env("HOME", sandbox.home.path())
+        .env("PATH", sandbox.path())
+        .env("CLAUDE_ENV_FILE", &sandbox.env_file)
+        .env("CLAUDE_PROJECT_DIR", &root)
+        .output_retrying()
+        .expect("the hook runs");
+    assert_quiet_success(&output);
+    assert!(
+        sandbox.bin_dir().join("just").is_file(),
+        "the hook installed just"
+    );
+    assert!(
+        sandbox.env_file().starts_with("export PATH="),
+        "the hook persisted PATH"
+    );
+}
