@@ -199,3 +199,47 @@ fn a_missing_toolchain_is_named_with_where_to_get_it() {
         );
     }
 }
+
+#[test]
+fn a_rerun_after_a_failed_install_completes_and_installs_nothing_twice() {
+    let installers = Installers::new();
+    installers
+        .stub("bun", None)
+        .stub("cargo", None)
+        .stub(
+            "rustup",
+            Some(("toolchain install", "error: network unreachable")),
+        )
+        .stub("cargo-llvm-cov", None)
+        .stub("cargo-nextest", None);
+    let failed = installers.run();
+    assert_eq!(failed.status.code(), Some(1));
+    assert!(
+        stderr(&failed).contains("'rustup toolchain install' failed"),
+        "stderr: {}",
+        stderr(&failed)
+    );
+    installers.stub("rustup", None);
+    let retried = installers.run();
+    assert_eq!(
+        retried.status.code(),
+        Some(0),
+        "stderr: {}",
+        stderr(&retried)
+    );
+    assert_eq!(stderr(&retried), "");
+    let rerun = installers.run();
+    assert_eq!(rerun.status.code(), Some(0), "stderr: {}", stderr(&rerun));
+    assert_eq!(
+        installers.calls(),
+        [
+            "bun install --frozen-lockfile",
+            "rustup toolchain install",
+            "bun install --frozen-lockfile",
+            "rustup toolchain install",
+            "bun install --frozen-lockfile",
+            "rustup toolchain install",
+        ],
+        "each run re-applies the locked installs and installs no cargo tool already present"
+    );
+}

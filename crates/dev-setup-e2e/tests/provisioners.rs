@@ -584,3 +584,23 @@ fn session_setup_reports_an_installer_that_cannot_run() {
         stderr(&output)
     );
 }
+
+#[test]
+fn a_repaired_doctor_clears_the_diagnostic_on_the_next_run() {
+    let sandbox = Sandbox::new();
+    sandbox.uv(false).llmlint_doctor_failing();
+    let failing = sandbox.run("setup-llmlint.sh", &[]);
+    assert!(
+        stderr(&failing).contains("llmlint doctor reported an issue"),
+        "stderr: {}",
+        stderr(&failing)
+    );
+    sandbox.llmlint_doctor_passing_loudly();
+    let repaired = sandbox.run("setup-llmlint.sh", &[]);
+    assert_eq!(repaired.status.code(), Some(0));
+    assert!(
+        !stderr(&repaired).contains("llmlint doctor reported an issue"),
+        "stderr: {}",
+        stderr(&repaired)
+    );
+}
