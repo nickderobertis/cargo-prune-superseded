@@ -71,6 +71,17 @@ impl Checkout {
         Self { root, bin }
     }
 
+    /// Makes every later cargo call succeed (the repaired tool).
+    fn cargo_succeeds(&self) {
+        let cargo = self.bin.path().join("cargo");
+        let body = std::fs::read_to_string(&cargo).expect("the cargo stub");
+        let repaired: Vec<&str> = body
+            .lines()
+            .filter(|line| !line.contains(": failed"))
+            .collect();
+        std::fs::write(&cargo, repaired.join("\n") + "\n").expect("the repaired stub");
+    }
+
     fn run(&self, request: &str) -> Output {
         let mut attempts = 0;
         loop {
@@ -152,7 +163,7 @@ fn clearing_empties_the_profiles_and_the_run_markers() {
 }
 
 #[test]
-fn the_report_holds_the_floor_only_over_runs_since_the_clear() {
+fn the_report_holds_the_floor_only_once_a_suite_has_run() {
     let checkout = Checkout::new(&[]);
     let skipped = checkout.run("--report");
     assert_eq!(skipped.status.code(), Some(0));
@@ -277,6 +288,18 @@ fn a_failed_clear_keeps_the_markers_and_a_later_clear_recovers() {
         failing.marker("some-crate").is_file(),
         "a failed clear leaves the record of runs"
     );
+    failing.cargo_succeeds();
+    let recovered = failing.run("--clear");
+    assert_eq!(
+        recovered.status.code(),
+        Some(0),
+        "stderr: {}",
+        stderr(&recovered)
+    );
+    assert!(
+        !failing.marker("some-crate").exists(),
+        "the later clear empties the runs"
+    );
 }
 
 #[test]
@@ -301,4 +324,18 @@ fn a_run_marker_that_cannot_be_written_is_reported_and_recovers() {
         stderr(&retried)
     );
     assert!(checkout.marker("some-crate").is_file());
+}
+
+#[test]
+fn a_line_count_that_is_not_a_whole_number_is_refused() {
+    for count in ["0.5", "0garbage", "-1"] {
+        let checkout = Checkout::summarising(
+            &[],
+            &format!(r#"{{"data":[{{"totals":{{"lines":{{"count":{count},"covered":0}}}}}}]}}"#),
+        );
+        checkout.run("some-crate");
+        let output = checkout.run("--report");
+        assert_eq!(output.status.code(), Some(1), "count: {count}");
+        assert!(stderr(&output).contains("summary has no totals.lines.count"));
+    }
 }

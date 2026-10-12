@@ -33,6 +33,7 @@ function readGraph() {
     rmSync(file, { force: true });
   } catch (error) {
     console.error(`check-boundaries: could not remove ${file} (${error.message}); delete it by hand.`);
+    process.exitCode = 1;
   }
   if (problem !== undefined) {
     fail(

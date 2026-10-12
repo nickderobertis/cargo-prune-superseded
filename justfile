@@ -48,7 +48,7 @@ fetch:
 # The end-user install path: package the crate as crates.io would serve it, install it
 # locked into an empty root, run the installed binary. Its own CI job, outside `check`.
 install-smoke:
-    @bash install/smoke.sh
+    @bash scripts/install-smoke.sh
 
 # Lint and type check the projects this change can reach: clippy -D warnings, cargo
 # check, shellcheck, actionlint and the project-boundary check.

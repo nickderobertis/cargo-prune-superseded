@@ -224,3 +224,40 @@ fn a_graph_file_that_cannot_be_read_or_removed_reports_both() {
     );
     assert!(stderr.contains("delete it by hand"), "stderr: {stderr}");
 }
+
+#[test]
+fn a_graph_file_that_cannot_be_removed_fails_a_passing_check() {
+    let workspace = tempfile::tempdir().expect("a workspace");
+    let bin = workspace.path().join("node_modules/.bin");
+    std::fs::create_dir_all(&bin).expect("node_modules/.bin");
+    let tmp = workspace.path().join("tmp");
+    std::fs::create_dir(&tmp).expect("a TMPDIR");
+    let served = workspace.path().join("graph.json");
+    std::fs::write(&served, graph(PROJECTS, &[("app-e2e", "app")])).expect("a graph");
+    // llmlint: ignore-block[e2e_not_mocked] the graph Nx computes is this script's input; this stub serves a valid one and then makes its directory read-only, so only the cleanup can fail.
+    let nx = bin.join("nx");
+    std::fs::write(
+        &nx,
+        format!(
+            "#!/usr/bin/env bash\nfor arg in \"$@\"; do case \"$arg\" in --file=*) cp {served:?} \"${{arg#--file=}}\";; esac; done\nchmod a-w {tmp:?}\n",
+            served = served.display().to_string(),
+            tmp = tmp.display().to_string()
+        ),
+    )
+    .expect("the nx stub");
+    // llmlint: ignore-end[e2e_not_mocked]
+    std::fs::set_permissions(&nx, std::fs::Permissions::from_mode(0o755)).expect("+x");
+    let output = std::process::Command::new("node")
+        .arg(Path::new(env!("CARGO_MANIFEST_DIR")).join("../../tools/check-boundaries.mjs"))
+        .current_dir(workspace.path())
+        .env("TMPDIR", &tmp)
+        .output()
+        .expect("node runs the script");
+    std::fs::set_permissions(&tmp, std::fs::Permissions::from_mode(0o755)).expect("restore");
+    assert_eq!(output.status.code(), Some(1), "stderr: {}", stderr(&output));
+    assert!(
+        stderr(&output).contains("delete it by hand"),
+        "stderr: {}",
+        stderr(&output)
+    );
+}

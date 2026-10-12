@@ -7,22 +7,17 @@
     "type:e2e"
   ],
   "implicitDependencies": [
-    "cargo-prune-superseded"
+    "cargo-prune-superseded",
+    "scripts"
   ],
-  "//": "The end-user install path: the crate packaged as crates.io would serve it, installed locked into an empty root, its binary run. In the gate's test fan-out, and its own CI job on every platform.",
+  "//": "The end-user install path, scripts/install-smoke.sh: the crate packaged as crates.io would serve it, installed locked into an empty root, its binary run. In the gate's test fan-out, and its own CI job on every platform.",
   "targets": {
     "test": {
       "executor": "nx:run-commands",
       "options": {
-        "command": "bash install/smoke.sh"
+        "command": "bash scripts/install-smoke.sh"
       },
       "cache": false
-    },
-    "lint": {
-      "executor": "nx:run-commands",
-      "options": {
-        "command": "shellcheck install/smoke.sh"
-      }
     }
   }
 }

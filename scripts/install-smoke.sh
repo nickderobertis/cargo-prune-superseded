@@ -5,7 +5,8 @@
 # run the installed binary from that root. Until a release exists, that archive stands in for the README's
 # `cargo install --locked cargo-prune-superseded`. Offline: it builds from the crates
 # `cargo fetch --locked` (in `just bootstrap`) already cached, so it contacts no registry.
-# Quiet on success; on failure the step, its output and what to do.
+# Quiet on success; on failure the step, its output and what to do. repo-checks drives
+# each failure.
 set -euo pipefail
 
 root_dir="$(dirname "${BASH_SOURCE[0]}")/.."

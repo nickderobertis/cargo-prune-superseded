@@ -56,7 +56,7 @@ case "$REQUEST" in
       exit 1
     }
     totals="${summary##*\"totals\":}"
-    if [ "$totals" = "$summary" ] || ! [[ $totals =~ \"lines\":\{\"count\":([0-9]+) ]]; then
+    if [ "$totals" = "$summary" ] || ! [[ $totals =~ \"lines\":\{\"count\":(0|[1-9][0-9]*)[,}] ]]; then
       echo "rust-coverage: cargo llvm-cov's summary has no totals.lines.count; run 'cargo llvm-cov report --summary-only --json' to see it, and update this script if its format changed." >&2
       exit 1
     fi
