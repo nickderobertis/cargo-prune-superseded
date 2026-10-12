@@ -1,0 +1,13 @@
+{
+  "$schema": "../node_modules/nx/schemas/project-schema.json",
+  "name": "scripts",
+  "projectType": "library",
+  "tags": ["lang:bash", "type:tooling"],
+  "//": "The gate's and the release's own scripts: bootstrap, the coverage floor, the session provisioners, the project-boundary check and the release probe (whose behaviour repo-checks drives).",
+  "targets": {
+    "lint": {
+      "executor": "nx:run-commands",
+      "options": { "command": "shellcheck scripts/*.sh" }
+    }
+  }
+}

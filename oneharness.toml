@@ -1,0 +1,13 @@
+# Which harness llmlint drives (llmlint.yml pins none). Fallback mode tries each in order
+# and stops at the first that can run at all, so one committed file serves a contributor
+# with Codex authenticated (codex) and a Claude Code session or CI (claude-code).
+# IS_SANDBOX lets claude-code run as root, as CI does.
+run_mode = "fallback"
+harnesses = ["codex", "claude-code"]
+
+[harness.codex]
+model = "gpt-5.5"
+
+[harness.claude-code]
+model = "claude-opus-4-8"
+env = { IS_SANDBOX = "1" }

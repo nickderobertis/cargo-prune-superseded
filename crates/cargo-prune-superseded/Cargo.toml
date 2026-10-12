@@ -1,0 +1,26 @@
+[package]
+name = "cargo-prune-superseded"
+description = "Prune superseded cargo build output by modification time."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+readme = "README.md"
+keywords = ["cargo", "cargo-subcommand", "target", "clean", "disk"]
+categories = ["development-tools::cargo-plugins", "command-line-utilities"]
+
+[lib]
+name = "cargo_prune_superseded"
+path = "src/lib.rs"
+
+[[bin]]
+name = "cargo-prune-superseded"
+path = "src/main.rs"
+
+[dependencies]
+clap.workspace = true
+
+[lints]
+workspace = true

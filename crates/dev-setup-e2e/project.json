@@ -1,0 +1,61 @@
+{
+  "$schema": "../../node_modules/nx/schemas/project-schema.json",
+  "name": "dev-setup-e2e",
+  "projectType": "library",
+  "tags": [
+    "lang:rust",
+    "type:e2e"
+  ],
+  "implicitDependencies": [],
+  "//": "The journeys that run the dev setup scripts \u2014 bootstrap.sh and the session provisioners \u2014 in a sandboxed HOME and PATH.",
+  "targets": {
+    "format": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "cargo fmt -p dev-setup-e2e"
+      }
+    },
+    "format-check": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "cargo fmt -p dev-setup-e2e -- --check"
+      }
+    },
+    "lint": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "cargo clippy --quiet -p dev-setup-e2e --all-targets --locked -- -D warnings"
+      }
+    },
+    "typecheck": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "cargo check --quiet -p dev-setup-e2e --all-targets --locked"
+      }
+    },
+    "test": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "bash scripts/rust-coverage.sh dev-setup-e2e"
+      },
+      "dependsOn": [
+        "workspace:coverage-clear"
+      ],
+      "outputs": [
+        "{workspaceRoot}/target/llvm-cov-target"
+      ],
+      "inputs": [
+        "default"
+      ]
+    }
+  },
+  "namedInputs": {
+    "default": [
+      "{projectRoot}/**/*",
+      "rust",
+      "{workspaceRoot}/scripts/bootstrap.sh",
+      "{workspaceRoot}/scripts/session-setup.sh",
+      "{workspaceRoot}/scripts/setup-llmlint.sh"
+    ]
+  }
+}

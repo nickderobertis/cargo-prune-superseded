@@ -1,0 +1,17 @@
+# The release targets of this repository: what a consumer can wait on, and the only
+# identifiers scripts/release-probe.sh will answer for. The schema is onevcs's
+# (`onevcs release declaration .` reads this file the way a consumer does).
+#
+# Every `id` is `<registry>:<name>`, the name exactly as that registry serves it.
+# crates/repo-checks/tests/release_workflow.rs holds `manifest` to the one package
+# release-plz publishes, and crates/repo-checks/tests/release_probe.rs drives the probe.
+
+schema_version = 1
+probe = "scripts/release-probe.sh"
+
+[[target]]
+id = "crate:cargo-prune-superseded"
+name = "crate"
+what = "The cargo-prune-superseded library and binary, installed with `cargo install`."
+published_by = ".github/workflows/release-plz.yml — `release-plz release`, publishing the package release-plz.toml marks `publish = true`."
+manifest = "crates/cargo-prune-superseded/Cargo.toml"

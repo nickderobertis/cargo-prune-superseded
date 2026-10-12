@@ -1,0 +1,16 @@
+[package]
+name = "repo-checks"
+description = "Offline checks of the repository wiring and gate tooling: release workflow, release probe, CI contexts, project boundaries, coverage and MSRV scripts."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish = false
+
+[dev-dependencies]
+serde_norway.workspace = true
+tempfile.workspace = true
+toml.workspace = true
+
+[lints]
+workspace = true

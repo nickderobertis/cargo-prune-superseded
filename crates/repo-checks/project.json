@@ -1,0 +1,68 @@
+{
+  "$schema": "../../node_modules/nx/schemas/project-schema.json",
+  "name": "repo-checks",
+  "projectType": "library",
+  "tags": [
+    "lang:rust",
+    "type:tooling"
+  ],
+  "implicitDependencies": [],
+  "//": "Offline checks of the repository's wiring and gate tooling: the release workflow and its configuration, the release probe, the CI contexts governance requires, the project-boundary check, the coverage script and the MSRV script.",
+  "targets": {
+    "format": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "cargo fmt -p repo-checks"
+      }
+    },
+    "format-check": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "cargo fmt -p repo-checks -- --check"
+      }
+    },
+    "lint": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "cargo clippy --quiet -p repo-checks --all-targets --locked -- -D warnings"
+      }
+    },
+    "typecheck": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "cargo check --quiet -p repo-checks --all-targets --locked"
+      }
+    },
+    "test": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "bash scripts/rust-coverage.sh repo-checks"
+      },
+      "dependsOn": [
+        "workspace:coverage-clear"
+      ],
+      "inputs": [
+        "default"
+      ],
+      "outputs": [
+        "{workspaceRoot}/target/llvm-cov-target"
+      ]
+    }
+  },
+  "namedInputs": {
+    "default": [
+      "{projectRoot}/**/*",
+      "rust",
+      "{workspaceRoot}/.github/workflows/*",
+      "{workspaceRoot}/release-plz.toml",
+      "{workspaceRoot}/release-targets.toml",
+      "{workspaceRoot}/scripts/release-probe.sh",
+      "{workspaceRoot}/crates/*/Cargo.toml",
+      "{workspaceRoot}/justfile",
+      "{workspaceRoot}/oneharness.toml",
+      "{workspaceRoot}/scripts/check-boundaries.mjs",
+      "{workspaceRoot}/scripts/rust-coverage.sh",
+      "{workspaceRoot}/scripts/msrv.sh"
+    ]
+  }
+}

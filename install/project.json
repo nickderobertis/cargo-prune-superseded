@@ -1,0 +1,28 @@
+{
+  "$schema": "../node_modules/nx/schemas/project-schema.json",
+  "name": "cargo-prune-superseded-install",
+  "projectType": "library",
+  "tags": [
+    "lang:bash",
+    "type:e2e"
+  ],
+  "implicitDependencies": [
+    "cargo-prune-superseded"
+  ],
+  "//": "The end-user install path: the crate packaged as crates.io would serve it, installed locked into an empty root, its binary run. In the gate's test fan-out, and its own CI job on every platform.",
+  "targets": {
+    "test": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "bash install/smoke.sh"
+      },
+      "cache": false
+    },
+    "lint": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "shellcheck install/smoke.sh"
+      }
+    }
+  }
+}

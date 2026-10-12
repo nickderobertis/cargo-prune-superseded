@@ -1,0 +1,55 @@
+{
+  "$schema": "../../node_modules/nx/schemas/project-schema.json",
+  "name": "cargo-prune-superseded",
+  "projectType": "application",
+  "tags": [
+    "lang:rust",
+    "type:app"
+  ],
+  "implicitDependencies": [],
+  "//": "The deliverable: the cargo-prune-superseded library and binary, and their fast unit tests. build produces the binary the e2e journeys drive.",
+  "targets": {
+    "format": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "cargo fmt -p cargo-prune-superseded"
+      }
+    },
+    "format-check": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "cargo fmt -p cargo-prune-superseded -- --check"
+      }
+    },
+    "lint": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "cargo clippy --quiet -p cargo-prune-superseded --all-targets --locked -- -D warnings"
+      }
+    },
+    "typecheck": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "cargo check --quiet -p cargo-prune-superseded --all-targets --locked"
+      }
+    },
+    "test": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "bash scripts/rust-coverage.sh cargo-prune-superseded"
+      },
+      "dependsOn": [
+        "workspace:coverage-clear"
+      ],
+      "outputs": [
+        "{workspaceRoot}/target/llvm-cov-target"
+      ]
+    },
+    "build": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "cargo build --quiet -p cargo-prune-superseded --locked"
+      }
+    }
+  }
+}

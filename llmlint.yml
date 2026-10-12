@@ -1,0 +1,27 @@
+# yaml-language-server: $schema=https://raw.githubusercontent.com/nickderobertis/llmlint/main/assets/llmlint.schema.json
+#
+# The LLM-judge tier — separate from the deterministic `just check` gate.
+# Run with `just lint-llm` (or `just lint-llm-diff` for the merge-base
+# diff); the diff-scoped run is the blocking PR check, not part of `check`.
+# Rules come from the pinned plugins below; tune one in place with
+# `override: true`. Bump a plugin's `@version` pin to pull new rules.
+files:
+  # No `include`: the whole tree is judged (.gitignore honoured), lockfiles aside.
+  exclude:
+    - "**/.git/**"
+    - "Cargo.lock"
+    - "bun.lock"
+rationales: true
+# No `agents` block: oneharness.toml selects the harness and model.
+plugins:
+  - "https://raw.githubusercontent.com/nickderobertis/llmlint/main/assets/config_lint.yml@1"
+  - "https://raw.githubusercontent.com/nickderobertis/dero-skills/main/skills/bootstrap/create-repo/assets/llmlint/base.llmlint.yml@1"
+  - "https://raw.githubusercontent.com/nickderobertis/dero-skills/main/skills/bootstrap/create-repo/assets/llmlint/project-graph.llmlint.yml@1"
+  - "https://raw.githubusercontent.com/nickderobertis/dero-skills/main/skills/bootstrap/create-repo/assets/llmlint/shapes/cli.llmlint.yml@1"
+  # The crate also ships a library; the composer takes one shape, so the library
+  # shape's rules are added beside the CLI's (AGENTS.md "Stack and composition").
+  - "https://raw.githubusercontent.com/nickderobertis/dero-skills/main/skills/bootstrap/create-repo/assets/llmlint/shapes/library.llmlint.yml@1"
+  - "https://raw.githubusercontent.com/nickderobertis/dero-skills/main/skills/bootstrap/create-repo/assets/llmlint/languages/rust.llmlint.yml@1"
+  - "https://raw.githubusercontent.com/nickderobertis/dero-skills/main/skills/bootstrap/create-repo/assets/llmlint/ci.llmlint.yml@1"
+  - "https://raw.githubusercontent.com/nickderobertis/dero-skills/main/skills/bootstrap/create-repo/assets/llmlint/releasing.llmlint.yml@1"
+  - "https://raw.githubusercontent.com/nickderobertis/dero-skills/main/skills/bootstrap/create-repo/assets/llmlint/tools/onebudgetspec.llmlint.yml@1"

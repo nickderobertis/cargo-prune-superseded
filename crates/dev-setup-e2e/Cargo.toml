@@ -1,0 +1,14 @@
+[package]
+name = "dev-setup-e2e"
+description = "Journeys that drive the dev setup scripts: scripts/bootstrap.sh and the session provisioners."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish = false
+
+[dev-dependencies]
+tempfile.workspace = true
+
+[lints]
+workspace = true

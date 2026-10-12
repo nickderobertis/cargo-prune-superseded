@@ -1,0 +1,69 @@
+{
+  "$schema": "./node_modules/nx/schemas/project-schema.json",
+  "name": "workspace",
+  "projectType": "library",
+  "tags": [
+    "type:tooling"
+  ],
+  "//": "Repo-level targets: the coverage clear every instrumented test run depends on and the aggregate floor, the supply-chain check, the MSRV build, the workflow lint and the project-boundary check.",
+  "targets": {
+    "coverage-clear": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "bash scripts/rust-coverage.sh --clear"
+      },
+      "cache": false
+    },
+    "coverage": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "bash scripts/rust-coverage.sh --report"
+      },
+      "cache": false,
+      "dependsOn": [
+        {
+          "target": "test",
+          "projects": [
+            "tag:lang:rust"
+          ]
+        }
+      ],
+      "inputs": []
+    },
+    "lint": {
+      "executor": "nx:run-commands",
+      "options": {
+        "commands": [
+          "actionlint",
+          "node scripts/check-boundaries.mjs"
+        ],
+        "parallel": false
+      },
+      "inputs": [
+        "{workspaceRoot}/.github/workflows/*",
+        "{workspaceRoot}/**/project.json",
+        "{workspaceRoot}/nx.json",
+        "{workspaceRoot}/scripts/check-boundaries.mjs"
+      ],
+      "cache": true
+    },
+    "deny": {
+      "executor": "nx:run-commands",
+      "options": {
+        "commands": [
+          "cargo deny --all-features check",
+          "cargo machete"
+        ],
+        "parallel": false
+      },
+      "cache": false
+    },
+    "msrv": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "bash scripts/msrv.sh"
+      },
+      "cache": false
+    }
+  }
+}

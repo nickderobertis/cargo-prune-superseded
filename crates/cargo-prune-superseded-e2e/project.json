@@ -1,0 +1,52 @@
+{
+  "$schema": "../../node_modules/nx/schemas/project-schema.json",
+  "name": "cargo-prune-superseded-e2e",
+  "projectType": "library",
+  "tags": [
+    "lang:rust",
+    "type:e2e"
+  ],
+  "implicitDependencies": [
+    "cargo-prune-superseded"
+  ],
+  "//": "The journeys that spawn the built binary. Behind its own edge, so only a change that can reach the binary runs them.",
+  "targets": {
+    "format": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "cargo fmt -p cargo-prune-superseded-e2e"
+      }
+    },
+    "format-check": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "cargo fmt -p cargo-prune-superseded-e2e -- --check"
+      }
+    },
+    "lint": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "cargo clippy --quiet -p cargo-prune-superseded-e2e --all-targets --locked -- -D warnings"
+      }
+    },
+    "typecheck": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "cargo check --quiet -p cargo-prune-superseded-e2e --all-targets --locked"
+      }
+    },
+    "test": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "bash scripts/rust-coverage.sh cargo-prune-superseded-e2e"
+      },
+      "dependsOn": [
+        "workspace:coverage-clear",
+        "cargo-prune-superseded:build"
+      ],
+      "outputs": [
+        "{workspaceRoot}/target/llvm-cov-target"
+      ]
+    }
+  }
+}

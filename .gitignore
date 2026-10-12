@@ -1,3 +1,9 @@
+/target
+/node_modules
+/.nx
+/dist
+.env
+.env.*
 # Local sync bookkeeping for gh-secrets (per-machine; the manifest itself is
 # tracked)
 .gh-secrets-state.json

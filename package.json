@@ -1,0 +1,9 @@
+{
+  "name": "cargo-prune-superseded-workspace",
+  "private": true,
+  "packageManager": "bun@1.3.14",
+  "devDependencies": {
+    "nx": "23.3.0",
+    "@onebudgetspec/cli": "0.1.4"
+  }
+}
