@@ -143,10 +143,10 @@ jobs:
         run: |
           case "$GATE/$CHECK_ALL" in
             success/skipped | skipped/success) ;;
-            *) echo "::error::the gate ended '$GATE' and check-all '$CHECK_ALL'"; exit 1 ;;
+            *) echo "::error::the gate ended '$GATE' and check-all '$CHECK_ALL'" >&2; exit 1 ;;
           esac
           for result in $OTHERS; do
-            [ "$result" = success ] || { echo "::error::a gate job ended '$result': $OTHERS"; exit 1; }
+            [ "$result" = success ] || { echo "::error::a gate job ended '$result': $OTHERS" >&2; exit 1; }
           done
 
   # The LLM-judge tier, diff-scoped: a required check separate from `check`. It needs the

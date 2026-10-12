@@ -40,7 +40,6 @@ fn toml_file(relative: &str) -> toml::Table {
         .unwrap_or_else(|error| panic!("{relative} must be valid TOML: {error}"))
 }
 
-/// Every step of every job, in order.
 fn steps(workflow: &Value) -> Vec<&Value> {
     workflow["jobs"]
         .as_mapping()

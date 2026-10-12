@@ -187,7 +187,7 @@ fn a_missing_coverage_tool_is_named_with_how_to_install_it() {
 #[test]
 fn an_argument_that_is_not_a_package_name_is_a_usage_error() {
     let checkout = Checkout::new(&[]);
-    for request in ["bad name", "--unknown"] {
+    for request in ["bad name", "--unknown", ""] {
         let output = checkout.run(request);
         assert_eq!(output.status.code(), Some(64), "request: {request}");
         assert!(stderr(&output).contains("pass a workspace member's package name"));
