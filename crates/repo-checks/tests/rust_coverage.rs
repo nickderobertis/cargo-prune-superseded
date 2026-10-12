@@ -267,3 +267,33 @@ fn a_run_marker_that_cannot_be_written_is_reported_and_recovers() {
     );
     assert!(checkout.marker("some-crate").is_file());
 }
+
+#[test]
+fn run_markers_that_cannot_be_removed_are_reported_and_a_later_clear_recovers() {
+    let checkout = Checkout::new(&[]);
+    checkout.run("some-crate");
+    let target = checkout.root.path().join("target");
+    std::fs::set_permissions(&target, std::fs::Permissions::from_mode(0o555))
+        .expect("lock target/");
+    let output = checkout.run("--clear");
+    std::fs::set_permissions(&target, std::fs::Permissions::from_mode(0o755))
+        .expect("unlock target/");
+    assert_eq!(output.status.code(), Some(1));
+    assert!(
+        stderr(&output)
+            .contains("could not remove target/coverage-runs (above); delete it by hand"),
+        "stderr: {}",
+        stderr(&output)
+    );
+    let recovered = checkout.run("--clear");
+    assert_eq!(
+        recovered.status.code(),
+        Some(0),
+        "stderr: {}",
+        stderr(&recovered)
+    );
+    assert!(
+        !target.join("coverage-runs").exists(),
+        "the later clear removes the runs"
+    );
+}
