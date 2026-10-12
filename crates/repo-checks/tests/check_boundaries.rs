@@ -148,3 +148,58 @@ fn a_malformed_graph_is_refused() {
         );
     }
 }
+
+/// The graph shape the script reads is Nx's own: the real `nx graph` over this workspace
+/// (installed by `just bootstrap`) must write a graph whose nodes carry tag lists and
+/// whose dependencies are lists of `{target}` edges, and the script must pass it.
+#[test]
+fn the_real_nx_graph_has_the_shape_the_script_reads_and_passes() {
+    let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
+    let nx = root.join("node_modules/.bin/nx");
+    assert!(nx.is_file(), "run 'just bootstrap' so Nx is installed");
+    let out = tempfile::tempdir().expect("a directory for the graph");
+    let file = out.path().join("graph.json");
+    let status = std::process::Command::new(&nx)
+        .arg("graph")
+        .arg(format!("--file={}", file.display()))
+        .current_dir(&root)
+        .env("NX_DAEMON", "false")
+        .stdout(std::process::Stdio::null())
+        .status()
+        .expect("nx runs");
+    assert!(status.success(), "nx graph failed");
+    let graph: serde_norway::Value =
+        serde_norway::from_str(&std::fs::read_to_string(&file).expect("the graph")).expect("JSON");
+    let nodes = graph["graph"]["nodes"].as_mapping().expect("a nodes map");
+    assert!(nodes.contains_key("cargo-prune-superseded"));
+    for (name, node) in nodes {
+        assert!(
+            node["data"]["tags"]
+                .as_sequence()
+                .is_some_and(|tags| tags.iter().all(serde_norway::Value::is_string)),
+            "{name:?} has no tags list"
+        );
+    }
+    let dependencies = graph["graph"]["dependencies"]
+        .as_mapping()
+        .expect("a dependencies map");
+    let e2e = dependencies[&serde_norway::Value::from("cargo-prune-superseded-e2e")]
+        .as_sequence()
+        .expect("a list of edges");
+    assert!(
+        e2e.iter()
+            .any(|edge| edge["target"].as_str() == Some("cargo-prune-superseded")),
+        "the e2e project's edge onto the binary is a {{target}} entry"
+    );
+    let verdict = std::process::Command::new("node")
+        .arg(root.join("scripts/check-boundaries.mjs"))
+        .current_dir(&root)
+        .output()
+        .expect("node runs the script");
+    assert_eq!(
+        verdict.status.code(),
+        Some(0),
+        "stderr: {}",
+        stderr(&verdict)
+    );
+}

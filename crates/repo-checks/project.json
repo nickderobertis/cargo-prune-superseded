@@ -62,7 +62,8 @@
       "{workspaceRoot}/oneharness.toml",
       "{workspaceRoot}/scripts/check-boundaries.mjs",
       "{workspaceRoot}/scripts/rust-coverage.sh",
-      "{workspaceRoot}/scripts/msrv.sh"
+      "{workspaceRoot}/scripts/msrv.sh",
+      "{workspaceRoot}/gh-secrets.json"
     ]
   }
 }

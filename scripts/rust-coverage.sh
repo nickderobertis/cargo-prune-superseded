@@ -11,7 +11,11 @@
 # and what to do.
 set -euo pipefail
 
-readonly REQUEST="${1:?usage: scripts/rust-coverage.sh --clear | <crate> | --report}"
+if [ $# -ne 1 ]; then
+  echo "rust-coverage: takes exactly one argument, and was given $#; usage: scripts/rust-coverage.sh --clear | <package> | --report" >&2
+  exit 64
+fi
+readonly REQUEST="$1"
 readonly MIN_LINES=95
 # One marker per crate run since the last clear, so the report knows whether any Rust
 # suite ran without assuming where cargo-llvm-cov keeps its profiles.

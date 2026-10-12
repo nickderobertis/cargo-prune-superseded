@@ -1,4 +1,4 @@
-//! `scripts/bootstrap.sh`, run as `just bootstrap` runs it, with `bun`, `cargo` and
+//! `scripts/bootstrap.sh`, run as `just bootstrap` runs it (after `just fetch`), with `bun`, `cargo` and
 //! `rustup` stubbed: each would install from the network, which this offline tier cannot
 //! reach. The stubs record every call, so each journey asserts exactly what bootstrap
 //! asked of them; the script's own decisions run for real.
@@ -115,11 +115,7 @@ fn bootstrap_installs_the_locked_toolchain_quietly() {
     assert_eq!(stderr(&output), "");
     assert_eq!(
         installers.calls(),
-        [
-            "bun install --frozen-lockfile",
-            "rustup toolchain install",
-            "cargo fetch --locked",
-        ]
+        ["bun install --frozen-lockfile", "rustup toolchain install"]
     );
 }
 
@@ -133,7 +129,6 @@ fn bootstrap_installs_missing_cargo_test_tools() {
         installers.calls(),
         [
             "bun install --frozen-lockfile",
-            "cargo fetch --locked",
             "cargo install --locked cargo-llvm-cov",
             "cargo install --locked cargo-nextest",
         ]
@@ -145,7 +140,6 @@ fn every_failing_step_stops_bootstrap_with_its_output_and_what_to_do() {
     for (tool, args, present_tools) in [
         ("bun", "install --frozen-lockfile", true),
         ("rustup", "toolchain install", true),
-        ("cargo", "fetch --locked", true),
         ("cargo", "install --locked cargo-llvm-cov", false),
         ("cargo", "install --locked cargo-nextest", false),
     ] {

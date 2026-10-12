@@ -182,3 +182,22 @@ fn an_argument_that_is_not_a_package_name_is_a_usage_error() {
     }
     assert_eq!(checkout.calls(), Vec::<String>::new());
 }
+
+#[test]
+fn anything_but_exactly_one_argument_is_a_usage_error() {
+    let checkout = Checkout::new(&[]);
+    for args in [&[][..], &["--clear", "extra"][..]] {
+        let output =
+            std::process::Command::new(checkout.root.path().join("scripts/rust-coverage.sh"))
+                .args(args)
+                .env(
+                    "PATH",
+                    format!("{}:/usr/bin:/bin", checkout.bin.path().display()),
+                )
+                .output()
+                .expect("the script runs");
+        assert_eq!(output.status.code(), Some(64), "args: {args:?}");
+        assert!(stderr(&output).contains("takes exactly one argument"));
+    }
+    assert_eq!(checkout.calls(), Vec::<String>::new());
+}

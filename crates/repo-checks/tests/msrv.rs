@@ -81,15 +81,28 @@ fn builds_under_the_declared_minimum_quietly() {
 
 #[test]
 fn a_manifest_without_exactly_one_workspace_minimum_is_refused() {
-    for manifest in [
-        "[workspace.package]\nversion = \"0.1.0\"\n\n[package]\nrust-version = \"1.70\"\n",
-        "[workspace.package]\nrust-version = \"1.89\"\nrust-version = \"1.90\"\n",
-        "[workspace.package]\nrust-version = \"latest\"\n",
+    for (manifest, reason) in [
+        (
+            "[workspace.package]\nversion = \"0.1.0\"\n\n[package]\nrust-version = \"1.70\"\n",
+            "must declare exactly one rust-version (found: none)",
+        ),
+        (
+            "[workspace.package]\nrust-version = \"1.89\"\nrust-version = \"1.90\"\n",
+            "must declare exactly one rust-version",
+        ),
+        (
+            "[workspace.package]\nrust-version = \"1.89\"\nrust-version=latest\n",
+            "must declare exactly one rust-version",
+        ),
+        (
+            "[workspace.package]\nrust-version = \"latest\"\n",
+            "is not rust-version = \"X.Y\" or \"X.Y.Z\"",
+        ),
     ] {
         let (output, calls) = run(manifest, &["rustup", "cargo"], None);
         assert_eq!(output.status.code(), Some(1), "manifest: {manifest}");
         assert!(
-            stderr(&output).contains("must declare exactly one rust-version"),
+            stderr(&output).contains(reason),
             "stderr: {}",
             stderr(&output)
         );

@@ -34,9 +34,17 @@ persist_session_env() {
   [ -n "${CLAUDE_ENV_FILE:-}" ] || return 0
   case ":${PATH}:" in
     *":${BIN_DIR}:"*) ;;
-    *) if ! error="$( { printf 'export PATH=%q\n' "${BIN_DIR}:${PATH}" >> "$CLAUDE_ENV_FILE"; } 2>&1 )"; then
-         log "could not write PATH to the session env file $CLAUDE_ENV_FILE (${error##*: }); check that it is writable, then re-run"
-       fi ;;
+    *)
+      line="$(printf 'export PATH=%q' "${BIN_DIR}:${PATH}")"
+      # Idempotent: a re-run in the same session appends nothing new.
+      if [ -r "$CLAUDE_ENV_FILE" ]; then
+        while IFS= read -r existing; do
+          [ "$existing" != "$line" ] || return 0
+        done < "$CLAUDE_ENV_FILE"
+      fi
+      if ! error="$( { printf '%s\n' "$line" >> "$CLAUDE_ENV_FILE"; } 2>&1 )"; then
+        log "could not write PATH to the session env file $CLAUDE_ENV_FILE (${error##*: }); check that it is writable, then re-run"
+      fi ;;
   esac
 }
 

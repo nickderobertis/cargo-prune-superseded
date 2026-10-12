@@ -41,7 +41,13 @@ jobs:
           bun-version-file: package.json
       - uses: taiki-e/install-action@v2
         with:
-          tool: just,cargo-llvm-cov,cargo-nextest,actionlint,shellcheck
+          tool: just,cargo-llvm-cov,cargo-nextest,shellcheck
+      # install-action has no actionlint; its own release script fetches a pinned binary.
+      - name: Install actionlint
+        run: |
+          mkdir -p "$HOME/.local/bin"
+          bash <(curl -fsSL https://raw.githubusercontent.com/rhysd/actionlint/v1.7.12/scripts/download-actionlint.bash) 1.7.12 "$HOME/.local/bin"
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
       - name: Bootstrap
         run: just bootstrap
       - run: just check
@@ -59,7 +65,13 @@ jobs:
           bun-version-file: package.json
       - uses: taiki-e/install-action@v2
         with:
-          tool: just,cargo-llvm-cov,cargo-nextest,actionlint,shellcheck
+          tool: just,cargo-llvm-cov,cargo-nextest,shellcheck
+      # install-action has no actionlint; its own release script fetches a pinned binary.
+      - name: Install actionlint
+        run: |
+          mkdir -p "$HOME/.local/bin"
+          bash <(curl -fsSL https://raw.githubusercontent.com/rhysd/actionlint/v1.7.12/scripts/download-actionlint.bash) 1.7.12 "$HOME/.local/bin"
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
       - run: just bootstrap
       - run: just check all
 

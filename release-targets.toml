@@ -6,6 +6,7 @@
 # crates/repo-checks/tests/release_workflow.rs holds `manifest` to the one package
 # release-plz publishes, and crates/repo-checks/tests/release_probe.rs drives the probe.
 
+# llmlint: ignore-block[contracts_have_one_source_or_a_drift_gate] onevcs owns this schema and validates the document whenever it reads it (`onevcs release declaration .`); this repository cannot depend on onevcs, and repo-checks holds every value here to what the repository actually publishes.
 schema_version = 1
 probe = "scripts/release-probe.sh"
 
@@ -15,3 +16,4 @@ name = "crate"
 what = "The cargo-prune-superseded library and binary, installed with `cargo install`."
 published_by = ".github/workflows/release-plz.yml — `release-plz release`, publishing the package release-plz.toml marks `publish = true`."
 manifest = "crates/cargo-prune-superseded/Cargo.toml"
+# llmlint: ignore-end[contracts_have_one_source_or_a_drift_gate]
