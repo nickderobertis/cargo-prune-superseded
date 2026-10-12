@@ -472,40 +472,67 @@ fn session_setup_reports_a_missing_llmlint_installer() {
     );
 }
 
+const PROVISIONERS: [&str; 2] = ["session-setup.sh", "setup-llmlint.sh"];
+
 #[test]
-fn a_second_session_setup_run_persists_nothing_new() {
-    let sandbox = Sandbox::new();
-    sandbox.uv(true).present("cargo").present("bun");
-    assert_quiet_success(&sandbox.run("session-setup.sh", &[]));
-    let first = sandbox.env_file();
-    assert_quiet_success(&sandbox.run("session-setup.sh", &[]));
-    assert_eq!(
-        sandbox.env_file(),
-        first,
-        "a re-run appends no second PATH line"
-    );
-    assert_eq!(first.lines().count(), 1);
+fn a_second_run_persists_nothing_new() {
+    for script in PROVISIONERS {
+        let sandbox = Sandbox::new();
+        sandbox.uv(true).present("cargo").present("bun");
+        assert_quiet_success(&sandbox.run(script, &[]));
+        let first = sandbox.env_file();
+        assert_quiet_success(&sandbox.run(script, &[]));
+        assert_eq!(
+            sandbox.env_file(),
+            first,
+            "{script}: a re-run appends no second PATH line"
+        );
+        assert_eq!(first.lines().count(), 1, "{script}");
+    }
 }
 
 #[test]
 fn a_session_env_file_that_becomes_writable_is_written_on_the_next_run() {
+    for script in PROVISIONERS {
+        let sandbox = Sandbox::new();
+        sandbox.uv(true).present("cargo").present("bun");
+        let dir = sandbox.home.path().join("session");
+        let env_file = dir.join("env");
+        let env_file = env_file.to_str().expect("a utf-8 path");
+        let failed = sandbox.run(script, &[("CLAUDE_ENV_FILE", env_file)]);
+        assert!(
+            stderr(&failed).contains("could not write PATH"),
+            "{script}: {}",
+            stderr(&failed)
+        );
+        std::fs::create_dir(&dir).expect("the session directory now exists");
+        assert_quiet_success(&sandbox.run(script, &[("CLAUDE_ENV_FILE", env_file)]));
+        assert!(
+            std::fs::read_to_string(env_file)
+                .expect("the env file was written")
+                .starts_with("export PATH="),
+            "{script}"
+        );
+    }
+}
+
+#[test]
+fn session_setup_installs_just_on_the_run_after_a_failed_install() {
     let sandbox = Sandbox::new();
-    sandbox.uv(true).present("cargo").present("bun");
-    let dir = sandbox.home.path().join("session");
-    let env_file = dir.join("env");
-    let env_file = env_file.to_str().expect("a utf-8 path");
-    let failed = sandbox.run("session-setup.sh", &[("CLAUDE_ENV_FILE", env_file)]);
+    sandbox.uv(false).present("cargo").present("bun");
+    let failed = sandbox.run("session-setup.sh", &[]);
+    assert_eq!(failed.status.code(), Some(0), "startup is never blocked");
     assert!(
-        stderr(&failed).contains("could not write PATH"),
+        stderr(&failed).contains("rust-just install failed"),
         "stderr: {}",
         stderr(&failed)
     );
-    std::fs::create_dir(&dir).expect("the session directory now exists");
-    assert_quiet_success(&sandbox.run("session-setup.sh", &[("CLAUDE_ENV_FILE", env_file)]));
+    assert!(!sandbox.bin_dir().join("just").exists());
+    sandbox.uv(true);
+    assert_quiet_success(&sandbox.run("session-setup.sh", &[]));
     assert!(
-        std::fs::read_to_string(env_file)
-            .expect("the env file was written")
-            .starts_with("export PATH=")
+        sandbox.bin_dir().join("just").is_file(),
+        "just is installed on the retry"
     );
 }
 
