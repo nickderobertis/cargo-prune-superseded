@@ -604,3 +604,26 @@ fn a_repaired_doctor_clears_the_diagnostic_on_the_next_run() {
         stderr(&repaired)
     );
 }
+
+#[test]
+fn either_provisioner_without_a_session_env_file_installs_quietly() {
+    for script in PROVISIONERS {
+        let sandbox = Sandbox::new();
+        sandbox.uv(true).present("cargo").present("bun");
+        let output = std::process::Command::new(script_path(script))
+            .env_clear()
+            .env("HOME", sandbox.home.path())
+            .env("PATH", sandbox.path())
+            .output_retrying()
+            .expect("the script runs");
+        assert_quiet_success(&output);
+        assert!(
+            sandbox.bin_dir().join("llmlint").is_file(),
+            "{script} installed llmlint"
+        );
+        assert!(
+            !sandbox.env_file.exists(),
+            "{script} wrote no session env file"
+        );
+    }
+}

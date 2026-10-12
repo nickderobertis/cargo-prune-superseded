@@ -75,6 +75,29 @@ impl Installers {
         std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o755)).expect("+x");
         self
     }
+
+    /// A `cargo` that records its calls and, for `cargo install --locked <tool>`, puts a
+    /// working `<tool>` on PATH — unless `<tool>` is `failing_tool`, which it refuses.
+    fn installing_cargo(&self, failing_tool: Option<&str>) -> &Self {
+        let log = self.dir.path().join("calls");
+        let refuse = failing_tool.map_or(String::new(), |tool| {
+            format!("[ \"$3\" = {tool:?} ] && {{ echo 'error: could not compile {tool}' >&2; exit 101; }}\n")
+        });
+        let path = self.dir.path().join("cargo");
+        std::fs::write(
+            &path,
+            format!(
+                "#!/usr/bin/env bash\necho \"cargo $*\" >>{log:?}\n\
+                 if [ \"$1\" = install ]; then\n{refuse}\
+                 printf '#!/usr/bin/env bash\\nexit 0\\n' >{dir:?}/\"$3\"; chmod +x {dir:?}/\"$3\"\nfi\nexit 0\n",
+                log = log.display().to_string(),
+                dir = self.dir.path().display().to_string(),
+            ),
+        )
+        .expect("a stub");
+        std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o755)).expect("+x");
+        self
+    }
     // llmlint: ignore-end[e2e_not_mocked]
 
     fn calls(&self) -> Vec<String> {
@@ -241,5 +264,45 @@ fn a_rerun_after_a_failed_install_completes_and_installs_nothing_twice() {
             "rustup toolchain install",
         ],
         "each run re-applies the locked installs and installs no cargo tool already present"
+    );
+}
+
+#[test]
+fn installed_cargo_tools_are_skipped_on_the_next_run_even_after_a_partial_failure() {
+    let installers = Installers::new();
+    installers
+        .stub("bun", None)
+        .stub("rustup", None)
+        .installing_cargo(Some("cargo-nextest"));
+    let partial = installers.run();
+    assert_eq!(partial.status.code(), Some(1));
+    assert!(
+        stderr(&partial).contains("'cargo install --locked cargo-nextest' failed"),
+        "stderr: {}",
+        stderr(&partial)
+    );
+    installers.installing_cargo(None);
+    let recovered = installers.run();
+    assert_eq!(
+        recovered.status.code(),
+        Some(0),
+        "stderr: {}",
+        stderr(&recovered)
+    );
+    let rerun = installers.run();
+    assert_eq!(rerun.status.code(), Some(0), "stderr: {}", stderr(&rerun));
+    let installs: Vec<String> = installers
+        .calls()
+        .into_iter()
+        .filter(|call| call.starts_with("cargo install"))
+        .collect();
+    assert_eq!(
+        installs,
+        [
+            "cargo install --locked cargo-llvm-cov",
+            "cargo install --locked cargo-nextest",
+            "cargo install --locked cargo-nextest",
+        ],
+        "llvm-cov installs once; nextest is retried once, then skipped"
     );
 }
