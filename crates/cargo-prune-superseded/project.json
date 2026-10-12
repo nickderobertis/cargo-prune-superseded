@@ -7,7 +7,7 @@
     "type:app"
   ],
   "implicitDependencies": [
-    "tools"
+    "coverage"
   ],
   "//": "The deliverable: the cargo-prune-superseded library and binary, and their fast unit tests. build produces the binary the e2e journeys drive.",
   "targets": {
@@ -38,7 +38,7 @@
     "test": {
       "executor": "nx:run-commands",
       "options": {
-        "command": "bash tools/rust-coverage.sh cargo-prune-superseded"
+        "command": "bash tools/coverage/rust-coverage.sh cargo-prune-superseded"
       },
       "dependsOn": [
         "workspace:coverage-clear"

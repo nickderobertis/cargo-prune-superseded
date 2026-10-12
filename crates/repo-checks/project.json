@@ -8,7 +8,8 @@
   ],
   "implicitDependencies": [
     "scripts",
-    "tools"
+    "tools",
+    "coverage"
   ],
   "//": "Offline checks of the repository's wiring and gate tooling: the release workflow and its configuration, the release probe, the CI contexts governance requires, the project-boundary check, the coverage script and the MSRV script.",
   "targets": {
@@ -39,7 +40,7 @@
     "test": {
       "executor": "nx:run-commands",
       "options": {
-        "command": "cargo nextest run --locked --no-tests=pass --package repo-checks"
+        "command": "cargo nextest run --locked --no-tests=pass --status-level fail --final-status-level fail --package repo-checks"
       },
       "inputs": [
         "default"

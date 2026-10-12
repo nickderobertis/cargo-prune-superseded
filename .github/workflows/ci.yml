@@ -75,7 +75,7 @@ jobs:
       - run: just bootstrap
       - run: just check all
 
-  # The end-user install path on every platform (scripts/install-smoke.sh).
+  # The end-user install path on every platform (crates/cargo-prune-superseded-install/smoke.sh).
   install:
     name: install (${{ matrix.os }})
     runs-on: ${{ matrix.os }}

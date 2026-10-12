@@ -38,7 +38,7 @@
     "test": {
       "executor": "nx:run-commands",
       "options": {
-        "command": "cargo nextest run --locked --no-tests=pass --package dev-setup-e2e"
+        "command": "cargo nextest run --locked --no-tests=pass --status-level fail --final-status-level fail --package dev-setup-e2e"
       }
     }
   }

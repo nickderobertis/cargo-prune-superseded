@@ -116,6 +116,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "cargo-prune-superseded-install"
+version = "0.1.0"
+dependencies = [
+ "tempfile",
+]
+
+[[package]]
 name = "cfg-if"
 version = "1.0.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"

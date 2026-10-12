@@ -29,6 +29,11 @@ release = false
 publish = false
 
 [[package]]
+name = "cargo-prune-superseded-install"
+release = false
+publish = false
+
+[[package]]
 name = "dev-setup-e2e"
 release = false
 publish = false

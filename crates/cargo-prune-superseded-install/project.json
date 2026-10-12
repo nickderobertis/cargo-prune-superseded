@@ -1,0 +1,34 @@
+{
+  "$schema": "../../node_modules/nx/schemas/project-schema.json",
+  "name": "cargo-prune-superseded-install",
+  "projectType": "library",
+  "tags": ["lang:rust", "type:e2e"],
+  "implicitDependencies": ["cargo-prune-superseded"],
+  "//": "The end-user install path: smoke.sh packages the crate as crates.io would serve it, installs it locked into an empty root and runs its binary; the journeys drive each of the script's verdicts. Its own CI job on every platform too.",
+  "targets": {
+    "format": { "executor": "nx:run-commands", "options": { "command": "cargo fmt -p cargo-prune-superseded-install" } },
+    "format-check": { "executor": "nx:run-commands", "options": { "command": "cargo fmt -p cargo-prune-superseded-install -- --check" } },
+    "lint": {
+      "executor": "nx:run-commands",
+      "options": {
+        "commands": [
+          "cargo clippy --quiet -p cargo-prune-superseded-install --all-targets --locked -- -D warnings",
+          "shellcheck crates/cargo-prune-superseded-install/smoke.sh"
+        ],
+        "parallel": false
+      }
+    },
+    "typecheck": { "executor": "nx:run-commands", "options": { "command": "cargo check --quiet -p cargo-prune-superseded-install --all-targets --locked" } },
+    "test": {
+      "executor": "nx:run-commands",
+      "options": {
+        "commands": [
+          "cargo nextest run --locked --no-tests=pass --status-level fail --final-status-level fail --package cargo-prune-superseded-install",
+          "bash crates/cargo-prune-superseded-install/smoke.sh"
+        ],
+        "parallel": false
+      },
+      "cache": false
+    }
+  }
+}

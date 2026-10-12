@@ -1,4 +1,4 @@
-//! `tools/rust-coverage.sh`, run from a scratch copy of the repository layout (so its
+//! `tools/coverage/rust-coverage.sh`, run from a scratch copy of the repository layout (so its
 //! run markers never touch this checkout's real coverage run) with a recording `cargo`
 //! first on PATH. cargo-llvm-cov is the tool the script orchestrates; its own
 //! instrumentation is proven by the gate's real coverage run, so here each journey asserts
@@ -20,10 +20,10 @@ impl Checkout {
     /// `failing` names the cargo subcommand words (e.g. `"llvm-cov report"`) that exit 1.
     fn new(failing: &[&str]) -> Self {
         let root = tempfile::tempdir().expect("a checkout");
-        std::fs::create_dir(root.path().join("tools")).expect("tools/");
-        let script = root.path().join("tools/rust-coverage.sh");
+        std::fs::create_dir_all(root.path().join("tools/coverage")).expect("tools/coverage/");
+        let script = root.path().join("tools/coverage/rust-coverage.sh");
         std::fs::copy(
-            Path::new(env!("CARGO_MANIFEST_DIR")).join("../../tools/rust-coverage.sh"),
+            Path::new(env!("CARGO_MANIFEST_DIR")).join("../../tools/coverage/rust-coverage.sh"),
             &script,
         )
         .expect("the script");
@@ -66,14 +66,15 @@ impl Checkout {
     fn run(&self, request: &str) -> Output {
         let mut attempts = 0;
         loop {
-            let result =
-                std::process::Command::new(self.root.path().join("tools/rust-coverage.sh"))
-                    .arg(request)
-                    .env(
-                        "PATH",
-                        format!("{}:/usr/bin:/bin", self.bin.path().display()),
-                    )
-                    .output();
+            let result = std::process::Command::new(
+                self.root.path().join("tools/coverage/rust-coverage.sh"),
+            )
+            .arg(request)
+            .env(
+                "PATH",
+                format!("{}:/usr/bin:/bin", self.bin.path().display()),
+            )
+            .output();
             match result {
                 // ETXTBSY: another test thread forked while a stub was being written.
                 Err(error) if error.raw_os_error() == Some(26) && attempts < 100 => {
@@ -198,15 +199,16 @@ fn an_argument_that_is_not_a_package_name_is_a_usage_error() {
 fn anything_but_exactly_one_argument_is_a_usage_error() {
     let checkout = Checkout::new(&[]);
     for args in [&[][..], &["--clear", "extra"][..]] {
-        let output =
-            std::process::Command::new(checkout.root.path().join("tools/rust-coverage.sh"))
-                .args(args)
-                .env(
-                    "PATH",
-                    format!("{}:/usr/bin:/bin", checkout.bin.path().display()),
-                )
-                .output()
-                .expect("the script runs");
+        let output = std::process::Command::new(
+            checkout.root.path().join("tools/coverage/rust-coverage.sh"),
+        )
+        .args(args)
+        .env(
+            "PATH",
+            format!("{}:/usr/bin:/bin", checkout.bin.path().display()),
+        )
+        .output()
+        .expect("the script runs");
         assert_eq!(output.status.code(), Some(64), "args: {args:?}");
         assert!(stderr(&output).contains("takes exactly one argument"));
     }

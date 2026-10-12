@@ -10,14 +10,14 @@
     "coverage-clear": {
       "executor": "nx:run-commands",
       "options": {
-        "command": "bash tools/rust-coverage.sh --clear"
+        "command": "bash tools/coverage/rust-coverage.sh --clear"
       },
       "cache": false
     },
     "coverage": {
       "executor": "nx:run-commands",
       "options": {
-        "command": "bash tools/rust-coverage.sh --report"
+        "command": "bash tools/coverage/rust-coverage.sh --report"
       },
       "cache": false,
       "dependsOn": [
@@ -68,6 +68,7 @@
     }
   },
   "implicitDependencies": [
-    "tools"
+    "tools",
+    "coverage"
   ]
 }

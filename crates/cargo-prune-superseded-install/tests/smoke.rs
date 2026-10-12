@@ -1,7 +1,7 @@
-//! `scripts/install-smoke.sh`, run from a scratch copy of the repository layout with a
+//! `smoke.sh`, run from a scratch copy of the repository layout with a
 //! recording `cargo` first on PATH whose `install` puts a chosen binary in the install
-//! root: the real package-and-install path is the gate's own `cargo-prune-superseded-install`
-//! run and the CI install job, so here each journey drives one of the script's verdicts.
+//! root: the real package-and-install path is this project's own `test` target and the CI
+//! install job, so here each journey drives one of the script's verdicts.
 
 #![cfg(unix)]
 
@@ -15,6 +15,8 @@ struct Behaviour {
     failing: Option<&'static str>,
     pkgid: &'static str,
     lock_install_root: bool,
+    hide_install_root: bool,
+    help_exit: u8,
     version_output: &'static str,
     version_exit: u8,
     help_output: &'static str,
@@ -24,6 +26,8 @@ const WORKING: Behaviour = Behaviour {
     failing: None,
     pkgid: "path+file:///repo/crates/cargo-prune-superseded#0.1.0",
     lock_install_root: false,
+    hide_install_root: false,
+    help_exit: 0,
     version_output: "cargo-prune-superseded 0.1.0",
     version_exit: 0,
     help_output: "Usage: cargo-prune-superseded",
@@ -39,10 +43,11 @@ fn run(behaviour: Behaviour, tmpdir: Option<&str>) -> (Output, Vec<String>) {
 fn run_in(behaviour: Behaviour, tmpdir: Option<&str>) -> (Output, Vec<String>, tempfile::TempDir) {
     let own_tmp = tempfile::tempdir().expect("a TMPDIR");
     let root = tempfile::tempdir().expect("a checkout");
-    std::fs::create_dir(root.path().join("scripts")).expect("scripts/");
-    let script = root.path().join("scripts/install-smoke.sh");
+    let dir = root.path().join("crates/cargo-prune-superseded-install");
+    std::fs::create_dir_all(&dir).expect("the crate directory");
+    let script = dir.join("smoke.sh");
     std::fs::copy(
-        Path::new(env!("CARGO_MANIFEST_DIR")).join("../../scripts/install-smoke.sh"),
+        Path::new(env!("CARGO_MANIFEST_DIR")).join("smoke.sh"),
         &script,
     )
     .expect("the script");
@@ -57,8 +62,8 @@ fn run_in(behaviour: Behaviour, tmpdir: Option<&str>) -> (Output, Vec<String>, t
     std::fs::write(
         &installed,
         format!(
-            "#!/usr/bin/env bash\ncase \"$1\" in\n--version) echo '{}'; exit {} ;;\n--help) echo '{}' ;;\nesac\n",
-            behaviour.version_output, behaviour.version_exit, behaviour.help_output
+            "#!/usr/bin/env bash\ncase \"$1\" in\n--version) echo '{}'; exit {} ;;\n--help) echo '{}'; exit {} ;;\nesac\n",
+            behaviour.version_output, behaviour.version_exit, behaviour.help_output, behaviour.help_exit
         ),
     )
     .expect("the binary cargo install will put in place");
@@ -75,7 +80,11 @@ fn run_in(behaviour: Behaviour, tmpdir: Option<&str>) -> (Output, Vec<String>, t
             log = log.display().to_string(),
             installed = installed.display().to_string(),
             pkgid = behaviour.pkgid,
-            lock = if behaviour.lock_install_root { "; chmod a-w \"$root/bin\"" } else { "" },
+            lock = match (behaviour.lock_install_root, behaviour.hide_install_root) {
+                (true, _) => "; chmod a-w \"$root/bin\"",
+                (_, true) => "; chmod 000 \"$root\"",
+                _ => "",
+            },
         ),
     )
     .expect("the cargo stub");
@@ -185,6 +194,13 @@ fn an_installed_binary_that_misreports_is_refused() {
             },
             "--help printed no usage naming cargo-prune-superseded",
         ),
+        (
+            Behaviour {
+                help_exit: 2,
+                ..WORKING
+            },
+            "the installed binary's --help exited non-zero",
+        ),
     ] {
         let (output, _) = run(behaviour, None);
         assert_refused(&output, reason);
@@ -249,4 +265,20 @@ fn a_package_id_without_a_plain_version_is_refused() {
     );
     assert_refused(&output, "ends in no plain X.Y.Z version");
     assert_eq!(calls, ["pkgid -p cargo-prune-superseded"]);
+}
+
+#[test]
+fn an_install_root_that_cannot_be_entered_is_refused_and_reported() {
+    let (output, _, tmp) = run_in(
+        Behaviour {
+            hide_install_root: true,
+            ..WORKING
+        },
+        None,
+    );
+    for root in left_in(&tmp) {
+        std::fs::set_permissions(&root, std::fs::Permissions::from_mode(0o755))
+            .expect("reopen the install root so the test can clean up");
+    }
+    assert_refused(&output, "cannot enter the install root");
 }
