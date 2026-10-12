@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 # The end-user install path, from the exact archive crates.io would serve: package the
-# crate (`cargo package` verifies it builds from the archive alone), install it locked
-# from that archive into an empty root outside the clone, and run the installed binary
-# from that root. Until a release exists, that archive stands in for the README's
+# crate as the working tree stands (`cargo package` verifies it builds from the archive
+# alone), install it locked from that archive into an empty root outside the clone, and
+# run the installed binary from that root. Until a release exists, that archive stands in for the README's
 # `cargo install --locked cargo-prune-superseded`. Offline: it builds from the crates
 # `cargo fetch --locked` (in `just bootstrap`) already cached, so it contacts no registry.
 # Quiet on success; on failure the step, its output and what to do.
@@ -23,7 +23,7 @@ fail() {
 version="$(cargo pkgid -p "$CRATE" 2>&1)" \
   || fail "cannot read $CRATE's version (above)." "run 'cargo pkgid -p $CRATE' from the repository root and fix what it reports." "$version"
 version="${version##*[#@]}"
-log="$(cargo package --locked --offline -p "$CRATE" 2>&1)" \
+log="$(cargo package --locked --offline --allow-dirty -p "$CRATE" 2>&1)" \
   || fail "'cargo package' failed (above): the crate does not build from its published archive." "run 'cargo fetch --locked' if a crate is missing from the cache, or add any file the build needs to the package (Cargo.toml include/exclude), then re-run 'just install-smoke'." "$log"
 
 install_root="$(mktemp -d 2>&1)" \

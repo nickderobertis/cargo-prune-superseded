@@ -1,4 +1,4 @@
-//! `scripts/msrv.sh`, run from a scratch checkout whose `Cargo.toml` each journey writes,
+//! `tools/msrv.sh`, run from a scratch checkout whose `Cargo.toml` each journey writes,
 //! with recording `rustup` and `cargo` first on PATH (installing a toolchain and building
 //! under it are what the gate's real `just msrv` run proves): each journey asserts which
 //! minimum the script read from the manifest and what it asked of them.
@@ -11,10 +11,10 @@ use std::process::Output;
 
 fn run(manifest: &str, tools: &[&str], failing: Option<&str>) -> (Output, Vec<String>) {
     let root = tempfile::tempdir().expect("a checkout");
-    std::fs::create_dir(root.path().join("scripts")).expect("scripts/");
+    std::fs::create_dir(root.path().join("tools")).expect("tools/");
     std::fs::copy(
-        Path::new(env!("CARGO_MANIFEST_DIR")).join("../../scripts/msrv.sh"),
-        root.path().join("scripts/msrv.sh"),
+        Path::new(env!("CARGO_MANIFEST_DIR")).join("../../tools/msrv.sh"),
+        root.path().join("tools/msrv.sh"),
     )
     .expect("the script");
     std::fs::write(root.path().join("Cargo.toml"), manifest).expect("a manifest");
@@ -39,7 +39,7 @@ fn run(manifest: &str, tools: &[&str], failing: Option<&str>) -> (Output, Vec<St
     }
     let mut attempts = 0;
     let output = loop {
-        let result = std::process::Command::new(root.path().join("scripts/msrv.sh"))
+        let result = std::process::Command::new(root.path().join("tools/msrv.sh"))
             .env("PATH", format!("{}:/usr/bin:/bin", bin.path().display()))
             .output();
         match result {

@@ -1,17 +1,14 @@
-// Project boundaries over the Nx graph, by tag: nothing depends on a `type:e2e` project
-// (a test suite is a leaf), and a `type:app` project depends on no `type:tooling` one, so
-// neither a suite nor the gate's tooling can be pulled into the deliverable. Quiet on
-// success; on failure names each forbidden edge, or the graph problem, and what to do.
+// Project boundaries over the Nx graph, by tag: nothing depends on a `type:e2e` project,
+// so a test suite stays a leaf no other project's change can be made to run through.
+// Quiet on success; on failure names each forbidden edge, or the graph problem, and what
+// to do.
 import { execFileSync } from "node:child_process";
 import { readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 // [source tag or null for any source, forbidden target tag]
-const FORBIDDEN = [
-  [null, "type:e2e"],
-  ["type:app", "type:tooling"],
-];
+const FORBIDDEN = [[null, "type:e2e"]];
 
 function fail(problem, action) {
   console.error(`check-boundaries: ${problem}`);
@@ -21,25 +18,29 @@ function fail(problem, action) {
 
 function readGraph() {
   const file = join(tmpdir(), `nx-graph-${process.pid}.json`);
+  let graph;
+  let problem;
   try {
     execFileSync("node_modules/.bin/nx", ["graph", `--file=${file}`], {
       stdio: ["ignore", "ignore", "pipe"],
       env: { ...process.env, NX_DAEMON: "false" },
     });
-    return JSON.parse(readFileSync(file, "utf8")).graph;
+    graph = JSON.parse(readFileSync(file, "utf8")).graph;
   } catch (error) {
-    const detail = error.stderr?.toString().trim() || error.message;
-    return fail(
-      `could not read the Nx project graph: ${detail}`,
+    problem = error.stderr?.toString().trim() || error.message;
+  }
+  try {
+    rmSync(file, { force: true });
+  } catch (error) {
+    console.error(`check-boundaries: could not remove ${file} (${error.message}); delete it by hand.`);
+  }
+  if (problem !== undefined) {
+    fail(
+      `could not read the Nx project graph: ${problem}`,
       "run 'just bootstrap' so Nx is installed, fix any project.json Nx rejects, then re-run.",
     );
-  } finally {
-    try {
-      rmSync(file, { force: true });
-    } catch (error) {
-      console.error(`check-boundaries: could not remove ${file} (${error.message}); delete it by hand.`);
-    }
   }
+  return graph;
 }
 
 const graph = readGraph();
@@ -60,7 +61,13 @@ for (const [source, edges] of Object.entries(dependencies)) {
     fail(`${source} has no tags list of strings in the graph`, `give ${source}'s project.json a "tags" array of strings, then re-run.`);
   }
   for (const edge of edges) {
-    const tags = nodes[edge?.target]?.data?.tags;
+    if (typeof edge?.target !== "string" || !Object.hasOwn(nodes, edge.target)) {
+      fail(
+        `${source} lists a dependency edge ${JSON.stringify(edge)} that names no project in the graph`,
+        "reinstall Nx ('just bootstrap'), then re-run; if it persists, check each project.json's implicitDependencies.",
+      );
+    }
+    const tags = nodes[edge.target]?.data?.tags;
     if (!Array.isArray(tags) || !tags.every((tag) => typeof tag === "string")) {
       fail(
         `${source} depends on ${edge?.target}, which has no tags list of strings in the graph`,

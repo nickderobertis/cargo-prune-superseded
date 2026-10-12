@@ -627,3 +627,25 @@ fn either_provisioner_without_a_session_env_file_installs_quietly() {
         );
     }
 }
+
+#[test]
+fn a_restored_llmlint_installer_clears_the_diagnostic() {
+    let sandbox = Sandbox::new();
+    sandbox
+        .uv(true)
+        .present("just")
+        .present("cargo")
+        .present("bun");
+    let (dir, copy) = session_setup_alone();
+    let missing = run_copy(&sandbox, &copy);
+    assert!(
+        stderr(&missing).contains("is missing or not executable"),
+        "stderr: {}",
+        stderr(&missing)
+    );
+    let installer = dir.path().join("setup-llmlint.sh");
+    std::fs::copy(script("setup-llmlint.sh"), &installer).expect("restore the installer");
+    std::fs::set_permissions(&installer, std::fs::Permissions::from_mode(0o755)).expect("+x");
+    assert_quiet_success(&run_copy(&sandbox, &copy));
+    assert!(sandbox.bin_dir().join("llmlint").is_file());
+}

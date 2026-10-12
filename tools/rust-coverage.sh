@@ -12,7 +12,7 @@
 set -euo pipefail
 
 if [ $# -ne 1 ]; then
-  echo "rust-coverage: takes exactly one argument, and was given $#; usage: scripts/rust-coverage.sh --clear | <package> | --report" >&2
+  echo "rust-coverage: takes exactly one argument, and was given $#; usage: tools/rust-coverage.sh --clear | <package> | --report" >&2
   exit 64
 fi
 readonly REQUEST="$1"
@@ -20,7 +20,7 @@ readonly MIN_LINES=95
 # One marker per crate run since the last clear, so the report knows whether any Rust
 # suite ran without assuming where cargo-llvm-cov keeps its profiles.
 readonly RUNS="target/coverage-runs"
-cd "$(dirname "${BASH_SOURCE[0]}")/.." || { echo "rust-coverage: cannot enter the repository root; run scripts/rust-coverage.sh from a checkout." >&2; exit 1; }
+cd "$(dirname "${BASH_SOURCE[0]}")/.." || { echo "rust-coverage: cannot enter the repository root; run tools/rust-coverage.sh from a checkout." >&2; exit 1; }
 
 for tool in llvm-cov nextest; do
   if ! probe="$(cargo "$tool" --version 2>&1)"; then
@@ -55,8 +55,12 @@ case "$REQUEST" in
       echo "rust-coverage: cargo llvm-cov could not summarise the runs (above); run 'just coverage' to measure from scratch." >&2
       exit 1
     }
-    measured="$(printf '%s' "$summary" | grep -o '"lines":{"count":[0-9]*' | tail -n 1)"
-    [ "${measured##*:}" != 0 ] || exit 0
+    totals="${summary##*\"totals\":}"
+    if [ "$totals" = "$summary" ] || ! [[ $totals =~ \"lines\":\{\"count\":([0-9]+) ]]; then
+      echo "rust-coverage: cargo llvm-cov's summary has no totals.lines.count; run 'cargo llvm-cov report --summary-only --json' to see it, and update this script if its format changed." >&2
+      exit 1
+    fi
+    [ "${BASH_REMATCH[1]}" != 0 ] || exit 0
     quietly "below ${MIN_LINES}% lines over every crate's run (above); cover the listed lines with a test that drives the real behaviour." \
       cargo llvm-cov report --summary-only --show-missing-lines --fail-under-lines "$MIN_LINES"
     ;;

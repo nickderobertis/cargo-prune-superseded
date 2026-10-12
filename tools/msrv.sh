@@ -3,7 +3,7 @@
 # it is declared: `rust-version` in Cargo.toml's [workspace.package] (clippy reads the
 # same key). Installs that toolchain with rustup when it is missing. Quiet on success.
 set -euo pipefail
-cd "$(dirname "${BASH_SOURCE[0]}")/.." || { echo "msrv: cannot enter the repository root; run scripts/msrv.sh from a checkout." >&2; exit 1; }
+cd "$(dirname "${BASH_SOURCE[0]}")/.." || { echo "msrv: cannot enter the repository root; run tools/msrv.sh from a checkout." >&2; exit 1; }
 
 # Exactly one `rust-version` key inside [workspace.package], whose value is "X.Y[.Z]".
 declared="$(sed -n '/^\[workspace\.package\]$/,/^\[/{/^rust-version[[:space:]]*=/p;}' Cargo.toml)" || {

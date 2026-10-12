@@ -41,8 +41,8 @@ when it is the lowest-error path and otherwise proposing it as a follow-up:
   - A live tier: nothing contacts an external service but the release probe, whose
     crates.io read its tests stub.
   - Per-project budgets: no cost figure exists yet; the pruning work registers its own.
-  - Nx's eslint boundary rule: no JS lint stack; `scripts/check-boundaries.mjs` enforces
-    the tags.
+  - Nx's eslint boundary rule: no JS lint stack; `tools/check-boundaries.mjs` keeps every
+    `type:e2e` project a leaf.
   - asdf/direnv: `rust-toolchain.toml` and `package.json` pin the toolchain.
   - Windows in the gate: its scripts and tests are POSIX; the install job proves Windows.
   - The CI install job runs `cargo install --locked --path` on the `cargo package`

@@ -1,4 +1,4 @@
-//! `scripts/rust-coverage.sh`, run from a scratch copy of the repository layout (so its
+//! `tools/rust-coverage.sh`, run from a scratch copy of the repository layout (so its
 //! run markers never touch this checkout's real coverage run) with a recording `cargo`
 //! first on PATH. cargo-llvm-cov is the tool the script orchestrates; its own
 //! instrumentation is proven by the gate's real coverage run, so here each journey asserts
@@ -25,14 +25,25 @@ impl Checkout {
     /// As `new`, with `llvm-cov report --summary-only --json` answering that the runs
     /// measured `lines` production lines.
     fn measuring(failing: &[&str], lines: u32) -> Self {
+        Self::summarising(
+            failing,
+            &format!(
+                r#"{{"data":[{{"totals":{{"lines":{{"count":{lines},"covered":{lines}}}}}}}]}}"#
+            ),
+        )
+    }
+
+    /// As `new`, with `llvm-cov report --summary-only --json` printing `summary`.
+    fn summarising(failing: &[&str], summary: &str) -> Self {
         let root = tempfile::tempdir().expect("a checkout");
-        std::fs::create_dir(root.path().join("scripts")).expect("scripts/");
-        let script = root.path().join("scripts/rust-coverage.sh");
+        std::fs::create_dir(root.path().join("tools")).expect("tools/");
+        let script = root.path().join("tools/rust-coverage.sh");
         std::fs::copy(
-            Path::new(env!("CARGO_MANIFEST_DIR")).join("../../scripts/rust-coverage.sh"),
+            Path::new(env!("CARGO_MANIFEST_DIR")).join("../../tools/rust-coverage.sh"),
             &script,
         )
         .expect("the script");
+        std::fs::write(root.path().join("summary.json"), summary).expect("a summary");
         let bin = tempfile::tempdir().expect("a PATH directory");
         let failures: Vec<String> = failing
             .iter()
@@ -49,8 +60,9 @@ impl Checkout {
             &cargo,
             format!(
                 "#!/usr/bin/env bash\necho \"$*\" >>{log:?}\n{failures}\n\
-                 case \"$*\" in *--json*) printf '{{\"data\":[{{\"totals\":{{\"lines\":{{\"count\":{lines},\"covered\":{lines}}}}}}}]}}';; esac\nexit 0\n",
-                log = root.path().join("cargo-calls").display().to_string()
+                 case \"$*\" in *--json*) cat {summary_file:?};; esac\nexit 0\n",
+                log = root.path().join("cargo-calls").display().to_string(),
+                summary_file = root.path().join("summary.json").display().to_string(),
             ),
         )
         .expect("the cargo stub");
@@ -63,7 +75,7 @@ impl Checkout {
         let mut attempts = 0;
         loop {
             let result =
-                std::process::Command::new(self.root.path().join("scripts/rust-coverage.sh"))
+                std::process::Command::new(self.root.path().join("tools/rust-coverage.sh"))
                     .arg(request)
                     .env(
                         "PATH",
@@ -223,7 +235,7 @@ fn anything_but_exactly_one_argument_is_a_usage_error() {
     let checkout = Checkout::new(&[]);
     for args in [&[][..], &["--clear", "extra"][..]] {
         let output =
-            std::process::Command::new(checkout.root.path().join("scripts/rust-coverage.sh"))
+            std::process::Command::new(checkout.root.path().join("tools/rust-coverage.sh"))
                 .args(args)
                 .env(
                     "PATH",
@@ -235,4 +247,58 @@ fn anything_but_exactly_one_argument_is_a_usage_error() {
         assert!(stderr(&output).contains("takes exactly one argument"));
     }
     assert_eq!(checkout.calls(), Vec::<String>::new());
+}
+
+#[test]
+fn a_summary_without_line_totals_is_refused_with_what_to_do() {
+    let checkout = Checkout::summarising(&[], r#"{"data":[{"files":[]}]}"#);
+    checkout.run("some-crate");
+    let output = checkout.run("--report");
+    assert_eq!(output.status.code(), Some(1));
+    assert!(
+        stderr(&output).contains("summary has no totals.lines.count"),
+        "stderr: {}",
+        stderr(&output)
+    );
+}
+
+#[test]
+fn a_failed_clear_keeps_the_markers_and_a_later_clear_recovers() {
+    let failing = Checkout::new(&["llvm-cov clean"]);
+    failing.run("some-crate");
+    let output = failing.run("--clear");
+    assert_eq!(output.status.code(), Some(1));
+    assert!(
+        stderr(&output).contains("could not clear cargo-llvm-cov's profiles"),
+        "stderr: {}",
+        stderr(&output)
+    );
+    assert!(
+        failing.marker("some-crate").is_file(),
+        "a failed clear leaves the record of runs"
+    );
+}
+
+#[test]
+fn a_run_marker_that_cannot_be_written_is_reported_and_recovers() {
+    let checkout = Checkout::new(&[]);
+    let runs = checkout.root.path().join("target/coverage-runs");
+    std::fs::create_dir_all(runs.parent().expect("target/")).expect("target/");
+    std::fs::write(&runs, "not a directory").expect("a file where the marker dir goes");
+    let output = checkout.run("some-crate");
+    assert_eq!(output.status.code(), Some(1));
+    assert!(
+        stderr(&output).contains("could not record some-crate's run"),
+        "stderr: {}",
+        stderr(&output)
+    );
+    std::fs::remove_file(&runs).expect("repair target/");
+    let retried = checkout.run("some-crate");
+    assert_eq!(
+        retried.status.code(),
+        Some(0),
+        "stderr: {}",
+        stderr(&retried)
+    );
+    assert!(checkout.marker("some-crate").is_file());
 }
