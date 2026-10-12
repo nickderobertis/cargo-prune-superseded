@@ -47,8 +47,16 @@ case "$REQUEST" in
     rm -rf "$RUNS" || { echo "rust-coverage: could not remove $RUNS (above); delete it by hand, then re-run." >&2; exit 1; }
     ;;
   --report)
-    # Nothing to hold to the floor when no Rust suite ran since the clear.
+    # Nothing to hold to the floor when no Rust suite ran since the clear, or when the
+    # suites that ran measured no production line (a change reaching only test crates).
     [ -d "$RUNS" ] || exit 0
+    summary="$(cargo llvm-cov report --summary-only --json 2>&1)" || {
+      printf '%s\n' "$summary" >&2
+      echo "rust-coverage: cargo llvm-cov could not summarise the runs (above); run 'just coverage' to measure from scratch." >&2
+      exit 1
+    }
+    measured="$(printf '%s' "$summary" | grep -o '"lines":{"count":[0-9]*' | tail -n 1)"
+    [ "${measured##*:}" != 0 ] || exit 0
     quietly "below ${MIN_LINES}% lines over every crate's run (above); cover the listed lines with a test that drives the real behaviour." \
       cargo llvm-cov report --summary-only --show-missing-lines --fail-under-lines "$MIN_LINES"
     ;;

@@ -19,6 +19,12 @@ struct Checkout {
 impl Checkout {
     /// `failing` names the cargo subcommand words (e.g. `"llvm-cov report"`) that exit 1.
     fn new(failing: &[&str]) -> Self {
+        Self::measuring(failing, 10)
+    }
+
+    /// As `new`, with `llvm-cov report --summary-only --json` answering that the runs
+    /// measured `lines` production lines.
+    fn measuring(failing: &[&str], lines: u32) -> Self {
         let root = tempfile::tempdir().expect("a checkout");
         std::fs::create_dir(root.path().join("scripts")).expect("scripts/");
         let script = root.path().join("scripts/rust-coverage.sh");
@@ -42,7 +48,8 @@ impl Checkout {
         std::fs::write(
             &cargo,
             format!(
-                "#!/usr/bin/env bash\necho \"$*\" >>{log:?}\n{failures}\nexit 0\n",
+                "#!/usr/bin/env bash\necho \"$*\" >>{log:?}\n{failures}\n\
+                 case \"$*\" in *--json*) printf '{{\"data\":[{{\"totals\":{{\"lines\":{{\"count\":{lines},\"covered\":{lines}}}}}}}]}}';; esac\nexit 0\n",
                 log = root.path().join("cargo-calls").display().to_string()
             ),
         )
@@ -148,8 +155,36 @@ fn the_report_holds_the_floor_only_over_runs_since_the_clear() {
 }
 
 #[test]
+fn a_summary_cargo_llvm_cov_cannot_produce_is_reported() {
+    let checkout = Checkout::new(&["llvm-cov report --summary-only --json"]);
+    checkout.run("some-crate");
+    let output = checkout.run("--report");
+    assert_eq!(output.status.code(), Some(1));
+    assert!(
+        stderr(&output)
+            .contains("cargo llvm-cov could not summarise the runs (above); run 'just coverage'"),
+        "stderr: {}",
+        stderr(&output)
+    );
+}
+
+#[test]
+fn runs_that_measured_no_production_line_hold_no_floor() {
+    // A change reaching only test-only crates: their suites ran, but measured nothing.
+    let checkout = Checkout::measuring(&["llvm-cov report --summary-only --show-missing-lines"], 0);
+    checkout.run("some-e2e-crate");
+    let output = checkout.run("--report");
+    assert_eq!(output.status.code(), Some(0), "stderr: {}", stderr(&output));
+    assert_eq!(
+        checkout.calls().last().map(String::as_str),
+        Some("llvm-cov report --summary-only --json"),
+        "the floor is not applied to zero measured lines"
+    );
+}
+
+#[test]
 fn a_report_below_the_floor_fails_with_what_to_do() {
-    let checkout = Checkout::new(&["llvm-cov report"]);
+    let checkout = Checkout::new(&["llvm-cov report --summary-only --show-missing-lines"]);
     checkout.run("some-crate");
     let output = checkout.run("--report");
     assert_eq!(output.status.code(), Some(1));
