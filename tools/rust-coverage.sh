@@ -5,10 +5,11 @@
 #   rust-coverage.sh <crate>     that crate's tests, instrumented, profiles kept
 #   rust-coverage.sh --report    one report over every crate's run, held to 95% lines
 #
-# Each crate's Nx `test` target is its instrumented run and depends on the clear
-# (workspace:coverage-clear), and `just test` reports once over every run, so the binary
-# the e2e journeys spawn counts toward the floor. Quiet on success; on failure the reason
-# and what to do.
+# The crates holding or spawning production code (the deliverable and its e2e journeys)
+# run their Nx `test` target through this script, after the clear (workspace:coverage-clear);
+# `just test` reports once over every run, so the binary the journeys spawn counts. The
+# test-only crates that exercise scripts measure no Rust and run uninstrumented. Quiet on
+# success; on failure the reason and what to do.
 set -euo pipefail
 
 if [ $# -ne 1 ]; then
@@ -47,20 +48,8 @@ case "$REQUEST" in
     rm -rf "$RUNS" || { echo "rust-coverage: could not remove $RUNS (above); delete it by hand, then re-run." >&2; exit 1; }
     ;;
   --report)
-    # Nothing to hold to the floor when no Rust suite ran since the clear, or when the
-    # suites that ran measured no production line (a change reaching only test crates).
+    # Nothing to hold to the floor when no measured suite ran since the clear.
     [ -d "$RUNS" ] || exit 0
-    summary="$(cargo llvm-cov report --summary-only --json 2>&1)" || {
-      printf '%s\n' "$summary" >&2
-      echo "rust-coverage: cargo llvm-cov could not summarise the runs (above); run 'just coverage' to measure from scratch." >&2
-      exit 1
-    }
-    totals="${summary##*\"totals\":}"
-    if [ "$totals" = "$summary" ] || ! [[ $totals =~ \"lines\":\{\"count\":(0|[1-9][0-9]*)[,}] ]]; then
-      echo "rust-coverage: cargo llvm-cov's summary has no totals.lines.count; run 'cargo llvm-cov report --summary-only --json' to see it, and update this script if its format changed." >&2
-      exit 1
-    fi
-    [ "${BASH_REMATCH[1]}" != 0 ] || exit 0
     quietly "below ${MIN_LINES}% lines over every crate's run (above); cover the listed lines with a test that drives the real behaviour." \
       cargo llvm-cov report --summary-only --show-missing-lines --fail-under-lines "$MIN_LINES"
     ;;

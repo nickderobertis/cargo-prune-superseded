@@ -19,22 +19,6 @@ struct Checkout {
 impl Checkout {
     /// `failing` names the cargo subcommand words (e.g. `"llvm-cov report"`) that exit 1.
     fn new(failing: &[&str]) -> Self {
-        Self::measuring(failing, 10)
-    }
-
-    /// As `new`, with `llvm-cov report --summary-only --json` answering that the runs
-    /// measured `lines` production lines.
-    fn measuring(failing: &[&str], lines: u32) -> Self {
-        Self::summarising(
-            failing,
-            &format!(
-                r#"{{"data":[{{"totals":{{"lines":{{"count":{lines},"covered":{lines}}}}}}}]}}"#
-            ),
-        )
-    }
-
-    /// As `new`, with `llvm-cov report --summary-only --json` printing `summary`.
-    fn summarising(failing: &[&str], summary: &str) -> Self {
         let root = tempfile::tempdir().expect("a checkout");
         std::fs::create_dir(root.path().join("tools")).expect("tools/");
         let script = root.path().join("tools/rust-coverage.sh");
@@ -43,7 +27,6 @@ impl Checkout {
             &script,
         )
         .expect("the script");
-        std::fs::write(root.path().join("summary.json"), summary).expect("a summary");
         let bin = tempfile::tempdir().expect("a PATH directory");
         let failures: Vec<String> = failing
             .iter()
@@ -59,10 +42,8 @@ impl Checkout {
         std::fs::write(
             &cargo,
             format!(
-                "#!/usr/bin/env bash\necho \"$*\" >>{log:?}\n{failures}\n\
-                 case \"$*\" in *--json*) cat {summary_file:?};; esac\nexit 0\n",
+                "#!/usr/bin/env bash\necho \"$*\" >>{log:?}\n{failures}\nexit 0\n",
                 log = root.path().join("cargo-calls").display().to_string(),
-                summary_file = root.path().join("summary.json").display().to_string(),
             ),
         )
         .expect("the cargo stub");
@@ -178,34 +159,6 @@ fn the_report_holds_the_floor_only_once_a_suite_has_run() {
 }
 
 #[test]
-fn a_summary_cargo_llvm_cov_cannot_produce_is_reported() {
-    let checkout = Checkout::new(&["llvm-cov report --summary-only --json"]);
-    checkout.run("some-crate");
-    let output = checkout.run("--report");
-    assert_eq!(output.status.code(), Some(1));
-    assert!(
-        stderr(&output)
-            .contains("cargo llvm-cov could not summarise the runs (above); run 'just coverage'"),
-        "stderr: {}",
-        stderr(&output)
-    );
-}
-
-#[test]
-fn runs_that_measured_no_production_line_hold_no_floor() {
-    // A change reaching only test-only crates: their suites ran, but measured nothing.
-    let checkout = Checkout::measuring(&["llvm-cov report --summary-only --show-missing-lines"], 0);
-    checkout.run("some-e2e-crate");
-    let output = checkout.run("--report");
-    assert_eq!(output.status.code(), Some(0), "stderr: {}", stderr(&output));
-    assert_eq!(
-        checkout.calls().last().map(String::as_str),
-        Some("llvm-cov report --summary-only --json"),
-        "the floor is not applied to zero measured lines"
-    );
-}
-
-#[test]
 fn a_report_below_the_floor_fails_with_what_to_do() {
     let checkout = Checkout::new(&["llvm-cov report --summary-only --show-missing-lines"]);
     checkout.run("some-crate");
@@ -261,19 +214,6 @@ fn anything_but_exactly_one_argument_is_a_usage_error() {
 }
 
 #[test]
-fn a_summary_without_line_totals_is_refused_with_what_to_do() {
-    let checkout = Checkout::summarising(&[], r#"{"data":[{"files":[]}]}"#);
-    checkout.run("some-crate");
-    let output = checkout.run("--report");
-    assert_eq!(output.status.code(), Some(1));
-    assert!(
-        stderr(&output).contains("summary has no totals.lines.count"),
-        "stderr: {}",
-        stderr(&output)
-    );
-}
-
-#[test]
 fn a_failed_clear_keeps_the_markers_and_a_later_clear_recovers() {
     let failing = Checkout::new(&["llvm-cov clean"]);
     failing.run("some-crate");
@@ -324,18 +264,4 @@ fn a_run_marker_that_cannot_be_written_is_reported_and_recovers() {
         stderr(&retried)
     );
     assert!(checkout.marker("some-crate").is_file());
-}
-
-#[test]
-fn a_line_count_that_is_not_a_whole_number_is_refused() {
-    for count in ["0.5", "0garbage", "-1"] {
-        let checkout = Checkout::summarising(
-            &[],
-            &format!(r#"{{"data":[{{"totals":{{"lines":{{"count":{count},"covered":0}}}}}}]}}"#),
-        );
-        checkout.run("some-crate");
-        let output = checkout.run("--report");
-        assert_eq!(output.status.code(), Some(1), "count: {count}");
-        assert!(stderr(&output).contains("summary has no totals.lines.count"));
-    }
 }

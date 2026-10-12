@@ -7,8 +7,7 @@
     "type:e2e"
   ],
   "implicitDependencies": [
-    "scripts",
-    "tools"
+    "scripts"
   ],
   "//": "The journeys that run the dev setup scripts \u2014 bootstrap.sh and the session provisioners \u2014 in a sandboxed HOME and PATH.",
   "targets": {
@@ -39,14 +38,8 @@
     "test": {
       "executor": "nx:run-commands",
       "options": {
-        "command": "bash tools/rust-coverage.sh dev-setup-e2e"
-      },
-      "dependsOn": [
-        "workspace:coverage-clear"
-      ],
-      "outputs": [
-        "{workspaceRoot}/target/llvm-cov-target"
-      ]
+        "command": "cargo nextest run --locked --no-tests=pass --package dev-setup-e2e"
+      }
     }
   }
 }

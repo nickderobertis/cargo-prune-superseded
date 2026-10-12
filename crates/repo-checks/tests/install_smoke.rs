@@ -13,6 +13,8 @@ use std::process::Output;
 #[derive(Clone, Copy)]
 struct Behaviour {
     failing: Option<&'static str>,
+    pkgid: &'static str,
+    lock_install_root: bool,
     version_output: &'static str,
     version_exit: u8,
     help_output: &'static str,
@@ -20,12 +22,22 @@ struct Behaviour {
 
 const WORKING: Behaviour = Behaviour {
     failing: None,
+    pkgid: "path+file:///repo/crates/cargo-prune-superseded#0.1.0",
+    lock_install_root: false,
     version_output: "cargo-prune-superseded 0.1.0",
     version_exit: 0,
     help_output: "Usage: cargo-prune-superseded",
 };
 
 fn run(behaviour: Behaviour, tmpdir: Option<&str>) -> (Output, Vec<String>) {
+    let (output, calls, _) = run_in(behaviour, tmpdir);
+    (output, calls)
+}
+
+/// As `run`, also returning the temporary directory the script was given, so a journey
+/// can see what it left there.
+fn run_in(behaviour: Behaviour, tmpdir: Option<&str>) -> (Output, Vec<String>, tempfile::TempDir) {
+    let own_tmp = tempfile::tempdir().expect("a TMPDIR");
     let root = tempfile::tempdir().expect("a checkout");
     std::fs::create_dir(root.path().join("scripts")).expect("scripts/");
     let script = root.path().join("scripts/install-smoke.sh");
@@ -57,11 +69,13 @@ fn run(behaviour: Behaviour, tmpdir: Option<&str>) -> (Output, Vec<String>) {
         format!(
             "#!/usr/bin/env bash\necho \"$*\" >>{log:?}\n{failure}\
              case \"$1\" in\n\
-             pkgid) echo 'path+file:///repo/crates/cargo-prune-superseded#0.1.0' ;;\n\
-             install) root=\"$5\"; mkdir -p \"$root/bin\"; cp {installed:?} \"$root/bin/cargo-prune-superseded\"; chmod +x \"$root/bin/cargo-prune-superseded\" ;;\n\
+             pkgid) echo {pkgid:?} ;;\n\
+             install) root=\"$5\"; mkdir -p \"$root/bin\"; cp {installed:?} \"$root/bin/cargo-prune-superseded\"; chmod +x \"$root/bin/cargo-prune-superseded\"{lock} ;;\n\
              esac\nexit 0\n",
             log = log.display().to_string(),
             installed = installed.display().to_string(),
+            pkgid = behaviour.pkgid,
+            lock = if behaviour.lock_install_root { "; chmod a-w \"$root/bin\"" } else { "" },
         ),
     )
     .expect("the cargo stub");
@@ -69,9 +83,10 @@ fn run(behaviour: Behaviour, tmpdir: Option<&str>) -> (Output, Vec<String>) {
     std::fs::set_permissions(&cargo, std::fs::Permissions::from_mode(0o755)).expect("+x");
     let mut command = std::process::Command::new(&script);
     command.env("PATH", format!("{}:/usr/bin:/bin", bin.path().display()));
-    if let Some(tmpdir) = tmpdir {
-        command.env("TMPDIR", tmpdir);
-    }
+    match tmpdir {
+        Some(tmpdir) => command.env("TMPDIR", tmpdir),
+        None => command.env("TMPDIR", own_tmp.path()),
+    };
     let mut attempts = 0;
     let output = loop {
         match command.output() {
@@ -88,7 +103,7 @@ fn run(behaviour: Behaviour, tmpdir: Option<&str>) -> (Output, Vec<String>) {
         .lines()
         .map(str::to_owned)
         .collect();
-    (output, calls)
+    (output, calls, own_tmp)
 }
 
 fn stderr(output: &Output) -> &str {
@@ -181,4 +196,57 @@ fn an_unusable_temporary_directory_is_named_with_what_to_do() {
     let (output, calls) = run(WORKING, Some("/nonexistent/tmp"));
     assert_refused(&output, "cannot create a temporary install root");
     assert!(calls.iter().all(|call| !call.starts_with("install")));
+}
+
+fn left_in(tmp: &tempfile::TempDir) -> Vec<std::path::PathBuf> {
+    std::fs::read_dir(tmp.path())
+        .expect("the TMPDIR")
+        .map(|entry| entry.expect("an entry").path())
+        .collect()
+}
+
+#[test]
+fn the_install_root_is_removed_after_success_and_after_failure() {
+    let (passed, _, tmp) = run_in(WORKING, None);
+    assert_eq!(passed.status.code(), Some(0), "stderr: {}", stderr(&passed));
+    assert_eq!(left_in(&tmp), Vec::<std::path::PathBuf>::new());
+    let (failed, _, tmp) = run_in(
+        Behaviour {
+            help_output: "nothing useful",
+            ..WORKING
+        },
+        None,
+    );
+    assert_eq!(failed.status.code(), Some(1));
+    assert_eq!(left_in(&tmp), Vec::<std::path::PathBuf>::new());
+}
+
+#[test]
+fn an_install_root_that_cannot_be_removed_fails_the_smoke() {
+    let (output, _, tmp) = run_in(
+        Behaviour {
+            lock_install_root: true,
+            ..WORKING
+        },
+        None,
+    );
+    for root in left_in(&tmp) {
+        std::fs::set_permissions(root.join("bin"), std::fs::Permissions::from_mode(0o755))
+            .expect("unlock the install root so the test can clean up");
+    }
+    assert_refused(&output, "could not remove");
+    assert!(stderr(&output).contains("remove it by hand"));
+}
+
+#[test]
+fn a_package_id_without_a_plain_version_is_refused() {
+    let (output, calls) = run(
+        Behaviour {
+            pkgid: "path+file:///repo/crates/cargo-prune-superseded#0.1.0-rc.1/../x",
+            ..WORKING
+        },
+        None,
+    );
+    assert_refused(&output, "ends in no plain X.Y.Z version");
+    assert_eq!(calls, ["pkgid -p cargo-prune-superseded"]);
 }

@@ -24,7 +24,8 @@
         {
           "target": "test",
           "projects": [
-            "tag:lang:rust"
+            "cargo-prune-superseded",
+            "cargo-prune-superseded-e2e"
           ]
         }
       ],

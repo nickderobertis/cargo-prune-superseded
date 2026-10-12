@@ -649,3 +649,30 @@ fn a_restored_llmlint_installer_clears_the_diagnostic() {
     assert_quiet_success(&run_copy(&sandbox, &copy));
     assert!(sandbox.bin_dir().join("llmlint").is_file());
 }
+
+#[test]
+fn existing_session_exports_survive_and_an_unterminated_last_line_stays_separate() {
+    for script in PROVISIONERS {
+        let sandbox = Sandbox::new();
+        sandbox.uv(true).present("cargo").present("bun");
+        std::fs::write(&sandbox.env_file, "export EARLIER=1\nexport LAST=2").expect("an env file");
+        assert_quiet_success(&sandbox.run(script, &[]));
+        let later = std::process::Command::new(sandbox.tools.path().join("bash"))
+            .args([
+                "-c",
+                "source \"$1\" && printf '%s %s ' \"$EARLIER\" \"$LAST\" && command -v llmlint",
+                "bash",
+            ])
+            .arg(&sandbox.env_file)
+            .env_clear()
+            .env("PATH", sandbox.path())
+            .output_retrying()
+            .expect("a later shell runs");
+        assert_eq!(later.status.code(), Some(0), "{script}: {}", stderr(&later));
+        assert_eq!(
+            String::from_utf8(later.stdout).expect("utf-8"),
+            format!("1 2 {}/llmlint\n", sandbox.bin_dir().display()),
+            "{script}"
+        );
+    }
+}

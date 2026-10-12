@@ -39,16 +39,10 @@
     "test": {
       "executor": "nx:run-commands",
       "options": {
-        "command": "bash tools/rust-coverage.sh repo-checks"
+        "command": "cargo nextest run --locked --no-tests=pass --package repo-checks"
       },
-      "dependsOn": [
-        "workspace:coverage-clear"
-      ],
       "inputs": [
         "default"
-      ],
-      "outputs": [
-        "{workspaceRoot}/target/llvm-cov-target"
       ]
     }
   },
