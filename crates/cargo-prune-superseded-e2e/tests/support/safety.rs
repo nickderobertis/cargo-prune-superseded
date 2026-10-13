@@ -452,6 +452,10 @@ fn failed_target_preserves_valid_json_and_another_target_completes() {
 }
 
 #[test]
+#[cfg_attr(
+    target_os = "macos",
+    ignore = "APFS refuses non-UTF-8 file names (EILSEQ), so no such target can exist there"
+)]
 fn non_utf8_target_paths_prune_and_produce_valid_json() {
     use std::os::unix::ffi::OsStringExt;
     let temp = tempdir();
