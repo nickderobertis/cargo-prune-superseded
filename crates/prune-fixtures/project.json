@@ -1,0 +1,35 @@
+{
+  "$schema": "../../node_modules/nx/schemas/project-schema.json",
+  "name": "prune-fixtures",
+  "projectType": "library",
+  "tags": [
+    "lang:rust",
+    "type:library"
+  ],
+  "targets": {
+    "format": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "cargo fmt -p cargo-prune-superseded-fixtures"
+      }
+    },
+    "format-check": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "cargo fmt -p cargo-prune-superseded-fixtures -- --check"
+      }
+    },
+    "lint": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "cargo clippy -p cargo-prune-superseded-fixtures --all-targets --locked -- -D warnings"
+      }
+    },
+    "typecheck": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "cargo check -p cargo-prune-superseded-fixtures --all-targets --locked"
+      }
+    }
+  }
+}

@@ -116,3 +116,11 @@ lint-llm-diff base="origin/main" *args:
 budgets tier="affected":
     {{ if tier == "all" { "bunx nx run-many" } else if tier == "affected" { "bunx nx affected --base=" + base } else { error("unknown tier '" + tier + "' — use 'affected' (the default) or 'all'") } }} -t budgets budgets-host
     [ ! -f budgets.yaml ] || bunx onebudgetspec check budgets.yaml
+
+# Release-only real Cargo builds, large sparse fixtures, and their recorded budget.
+workload:
+    bunx nx run-many -t workload --outputStyle=static
+
+# Native Windows filesystem journeys; CI's Windows install job owns their execution.
+test-windows:
+    cargo test --locked -p cargo-prune-superseded-e2e --test windows

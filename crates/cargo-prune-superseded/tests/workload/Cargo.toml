@@ -1,0 +1,18 @@
+[package]
+name = "cargo-prune-superseded-workload"
+description = "Release-only real Cargo and large sparse-filesystem pruning journeys."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish = false
+
+[dev-dependencies]
+prune-fixtures.workspace = true
+assert_cmd.workspace = true
+tempfile.workspace = true
+filetime = "0.2.29"
+serde_json = "1.0.154"
+
+[lints]
+workspace = true

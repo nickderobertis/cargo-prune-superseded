@@ -7,7 +7,8 @@
     "type:app"
   ],
   "implicitDependencies": [
-    "coverage"
+    "coverage",
+    "prune-fixtures"
   ],
   "//": "The deliverable: the cargo-prune-superseded library and binary, and their fast unit tests. build produces the binary the e2e journeys drive.",
   "targets": {

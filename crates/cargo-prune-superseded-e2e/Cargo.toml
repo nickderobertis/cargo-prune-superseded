@@ -8,9 +8,16 @@ license.workspace = true
 publish = false
 
 [dev-dependencies]
+prune-fixtures.workspace = true
 assert_cmd.workspace = true
+filetime = "0.2.29"
 predicates.workspace = true
+serde_json = "1.0.154"
 tempfile.workspace = true
 
 [lints]
 workspace = true
+
+[target.'cfg(windows)'.dev-dependencies]
+fs2 = "0.4.3"
+winapi-util = "0.1.11"

@@ -44,7 +44,8 @@ when it is the lowest-error path and otherwise proposing it as a follow-up:
   - Nx's eslint boundary rule: no JS lint stack; `tools/check-boundaries.mjs` keeps every
     `type:e2e` project a leaf.
   - asdf/direnv: `rust-toolchain.toml` and `package.json` pin the toolchain.
-  - Windows in the gate: its scripts and tests are POSIX; the install job proves Windows.
+  - Windows in the Nx quality gate: its scripts and du/symlink journeys are POSIX; the
+    install job also runs the native Windows pruning and allocated-block journeys.
   - The CI install job runs `cargo install --locked --path` on the `cargo package`
     archive rather than the README's registry command: until a release exists that
     archive is exactly what crates.io would serve.
@@ -103,3 +104,9 @@ workflow, add it there rather than re-approving it; keep it narrow.
 
 Propose only materially helpful follow-ups — a script for a step done by hand, a note
 here, a test that would have caught a bug — each with its likely impact. Skip busywork.
+
+## Pruning journeys
+
+See [binary safety and reporting](crates/cargo-prune-superseded-e2e/AGENTS.md),
+[SDK boundary cases](crates/cargo-prune-superseded/AGENTS.md), and
+[release-only Cargo and sparse-target journeys](crates/cargo-prune-superseded/tests/workload/AGENTS.md).

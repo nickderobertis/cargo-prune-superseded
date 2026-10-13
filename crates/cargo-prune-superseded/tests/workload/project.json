@@ -1,0 +1,29 @@
+{
+  "$schema": "../../../../node_modules/nx/schemas/project-schema.json",
+  "name": "cargo-prune-superseded-workload",
+  "projectType": "library",
+  "tags": [
+    "lang:rust",
+    "type:e2e"
+  ],
+  "implicitDependencies": [
+    "cargo-prune-superseded",
+    "prune-fixtures"
+  ],
+  "targets": {
+    "workload": {
+      "executor": "nx:run-commands",
+      "cache": false,
+      "outputs": [
+        "{workspaceRoot}/dist/prune-workload"
+      ],
+      "options": {
+        "commands": [
+          "cargo test --locked -p cargo-prune-superseded-workload --test journeys",
+          "bunx onebudgetspec check crates/cargo-prune-superseded/tests/workload/budgets.yaml"
+        ],
+        "parallel": false
+      }
+    }
+  }
+}

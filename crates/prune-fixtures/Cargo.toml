@@ -1,0 +1,15 @@
+[package]
+name = "cargo-prune-superseded-fixtures"
+description = "Real filesystem layout and inventory helpers shared by pruning journeys."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish = false
+
+[dependencies]
+filetime = "0.2.29"
+tempfile.workspace = true
+
+[lints]
+workspace = true
