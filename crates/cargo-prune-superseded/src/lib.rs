@@ -257,7 +257,9 @@ impl Pass {
         }
     }
 
-    // A directory whose listing fails part-way is treated as unreadable as a whole.
+    // A listing that fails part-way (a device I/O error; no permission or race produces
+    // one) fails as a whole, so every caller handles it as an unreadable directory: the
+    // build or container it guards is kept, and nothing beneath it is removed.
     fn children(&mut self, path: &Path) -> io::Result<Vec<PathBuf>> {
         let mut children = fs::read_dir(path)?
             .map(|entry| entry.map(|e| e.path()))
@@ -351,18 +353,20 @@ impl Pass {
     }
 
     fn measure(&mut self, path: &Path, build: &mut Build) {
-        let (meta, time) = match entry_metadata(path) {
+        let meta = match entry_metadata(path) {
             Ok(meta) if meta.is_symlink() => return,
-            metadata => match metadata.and_then(|meta| Ok((meta.modified()?, meta))) {
-                Ok((time, meta)) => (meta, time),
-                Err(e) => {
-                    self.skip(path, &e);
-                    build.incomplete = true;
-                    return;
-                }
-            },
+            Ok(meta) => meta,
+            Err(e) => {
+                self.skip(path, &e);
+                build.incomplete = true;
+                return;
+            }
         };
-        build.newest = Some(build.newest.map_or(time, |old| old.max(time)));
+        // Linux, macOS and Windows always record an mtime; an entry without one would
+        // leave its build undated, so the build is kept rather than judged by the rest.
+        let time = meta.modified().ok();
+        build.incomplete |= time.is_none();
+        build.newest = build.newest.max(time);
         if meta.is_dir() {
             match self.children(path) {
                 Ok(children) => {
