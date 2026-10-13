@@ -61,8 +61,8 @@ fn native_windows_directories_hardlinks_and_allocated_sizes_survive_dry_run_then
     fs::hard_link(&oldest, links.join("artifact")).unwrap();
     let kept_units = [("alpha", B), ("alpha", C), ("beta", B)];
     let before_kept = kept(&profile, &kept_units);
-    let before_outside = inventory(&links, true);
-    let before = inventory(&target, true);
+    let before_outside = inventory(&links);
+    let before = inventory(&target);
     let roots = [target.clone(), links.clone()];
     let before_bytes = allocated(&roots);
     let retained_paths: Vec<_> = kept_units
@@ -90,7 +90,7 @@ fn native_windows_directories_hardlinks_and_allocated_sizes_survive_dry_run_then
         dry["targets"][0]["bytes_retained"].as_u64().unwrap(),
         retained
     );
-    assert_eq!(inventory(&target, true), before);
+    assert_eq!(inventory(&target), before);
     let output = binary()
         .args(["--keep-within", "2d", "--json"])
         .arg(&target)
@@ -103,7 +103,7 @@ fn native_windows_directories_hardlinks_and_allocated_sizes_survive_dry_run_then
     expect_removed(&profile, "alpha", A);
     expect_removed(&profile, "beta", A);
     assert_eq!(kept(&profile, &kept_units), before_kept);
-    assert_eq!(inventory(&links, true), before_outside);
+    assert_eq!(inventory(&links), before_outside);
     assert_eq!(result["targets"][0]["builds_removed"], 2);
     assert_eq!(
         result["targets"][0]["bytes_freed"].as_u64().unwrap(),

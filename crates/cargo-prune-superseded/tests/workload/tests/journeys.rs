@@ -81,7 +81,7 @@ fn entries_for(profile: &Path, unit: &str, hash: &str) -> fixture::Inventory {
     unit_paths(profile, unit, hash)
         .into_iter()
         .flat_map(|path| {
-            inventory(&path, true)
+            inventory(&path)
                 .into_iter()
                 .map(move |(relative, value)| (path.join(relative), value))
         })

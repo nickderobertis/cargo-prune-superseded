@@ -61,10 +61,24 @@ fn every_symlink_traversal_path_preserves_its_outside_referent() {
         // directories again, leaving the recent outside referent and link alone.
         age_tree(&profile.join(format!("{container}/beta-{A}")), OLD);
     }
-    let outside_before = inventory(&outside, true);
+    refresh_atime(&target);
+    let outside_before = inventory(&outside);
+    // Refused links stay in place: the profiles holding them, and the escaped profile link.
+    let refused_before: Vec<_> = ["deps", ".fingerprint", "build", "incremental"]
+        .iter()
+        .map(|container| target.join(format!("symlink-{container}")))
+        .chain([target.join("escaped-profile")])
+        .map(|path| {
+            let value = inventory(&path);
+            (path, value)
+        })
+        .collect();
     let ancestor_alias = alias.join("debug");
     let report = pass(&[&alias, &ancestor_alias, &target]);
-    assert_eq!(inventory(&outside, true), outside_before);
+    assert_eq!(inventory(&outside), outside_before);
+    for (path, value) in refused_before {
+        assert_eq!(inventory(&path), value);
+    }
     expect_removed(&profile, "alpha", A);
     expect_removed(&profile, "beta", A);
     assert!(fs::symlink_metadata(&build_link).is_err());
@@ -171,7 +185,7 @@ fn unreadable_target_exits_one_without_modifying_it() {
     chmod(temp.path(), 0o777);
     let target = temp.path().join("target");
     basic(&target);
-    let before = inventory(&target, true);
+    let before = inventory(&target);
     chmod(&target, 0o000);
     let out = constrained_binary()
         .args(["--keep-within", "2d"])
@@ -187,7 +201,7 @@ fn unreadable_target_exits_one_without_modifying_it() {
             .unwrap()
             .contains(target.to_str().unwrap())
     );
-    assert_eq!(inventory(&target, true), before);
+    assert_eq!(inventory(&target), before);
 }
 
 #[test]
@@ -195,7 +209,7 @@ fn human_summary_sizes_dry_run_and_skipped_lines_match_filesystem() {
     let temp = tempdir();
     let target = temp.path().join("target");
     basic(&target);
-    let before = inventory(&target, true);
+    let before = inventory(&target);
     let profile = target.join("debug");
     let removed = du(&[paths(&profile, "alpha", A), paths(&profile, "beta", A)].concat());
     let retained = du(&[("alpha", B), ("alpha", C), ("beta", B)]
@@ -221,7 +235,7 @@ fn human_summary_sizes_dry_run_and_skipped_lines_match_filesystem() {
         lines[2],
         format!("  skipped {}: target directory is absent", absent.display())
     );
-    assert_eq!(inventory(&target, true), before);
+    assert_eq!(inventory(&target), before);
     let out = binary()
         .args(["--keep-within", "2d"])
         .arg(&target)
@@ -260,7 +274,17 @@ fn assert_summary(line: &str, path: &Path, verb: &str, expected: (u64, u64, u64,
 
 #[test]
 fn unreadable_build_or_container_protects_uncertain_output_and_other_profiles_continue() {
-    for container in [false, true] {
+    // Unlistable build/ entries, an unlistable build/ container, and a listable build/
+    // whose entries cannot be inspected (no search permission).
+    for (denied, mode, skipped) in [
+        (
+            format!("build/alpha-{A}/one/two"),
+            0o000,
+            format!("build/alpha-{A}/one/two"),
+        ),
+        ("build".to_owned(), 0o000, "build".to_owned()),
+        ("build".to_owned(), 0o444, format!("build/alpha-{A}")),
+    ] {
         let temp = tempdir();
         chmod(temp.path(), 0o777);
         let target = temp.path().join("target");
@@ -273,16 +297,12 @@ fn unreadable_build_or_container_protects_uncertain_output_and_other_profiles_co
             .iter()
             .flat_map(|hash| paths(&profile, "alpha", hash).into_iter().take(4))
             .map(|path| {
-                let value = inventory(&path, true);
+                let value = inventory(&path);
                 (path, value)
             })
             .collect();
-        let denied = if container {
-            profile.join("build")
-        } else {
-            profile.join(format!("build/alpha-{A}/one/two"))
-        };
-        chmod(&denied, 0o000);
+        let denied = profile.join(denied);
+        chmod(&denied, mode);
         let output = constrained_binary()
             .args(["--keep-within", "2d", "--json"])
             .arg(&target)
@@ -298,10 +318,10 @@ fn unreadable_build_or_container_protects_uncertain_output_and_other_profiles_co
                 .as_array()
                 .unwrap()
                 .iter()
-                .any(|s| s["path"] == denied.to_str().unwrap())
+                .any(|s| s["path"] == profile.join(&skipped).to_str().unwrap())
         );
         for (path, value) in before {
-            assert_eq!(inventory(&path, true), value);
+            assert_eq!(inventory(&path), value);
         }
         expect_removed(&target.join("release"), "alpha", A);
     }
@@ -355,14 +375,21 @@ fn human_real_refusal_has_one_line_per_skipped_entry_and_measured_sizes() {
 
 #[test]
 fn unreadable_discovery_directory_is_skipped_and_readable_profile_continues() {
+    // An unlistable directory, and a listable one whose children cannot be inspected.
+    for (mode, skipped) in [(0o000, None), (0o444, Some("debug"))] {
+        unreadable_discovery_directory(mode, skipped);
+    }
+}
+
+fn unreadable_discovery_directory(mode: u32, skipped: Option<&str>) {
     let temp = tempdir();
     chmod(temp.path(), 0o777);
     let target = temp.path().join("target");
     basic(&target);
     let hidden = target.join("hidden");
     basic(&hidden);
-    let before = inventory(&hidden, true);
-    chmod(&hidden, 0o000);
+    let before = inventory(&hidden);
+    chmod(&hidden, mode);
     let output = constrained_binary()
         .args(["--keep-within", "2d", "--json"])
         .arg(&target)
@@ -375,9 +402,13 @@ fn unreadable_discovery_directory_is_skipped_and_readable_profile_continues() {
     let report: Value = serde_json::from_slice(&output).unwrap();
     assert_eq!(
         report["targets"][0]["skipped"][0]["path"],
-        hidden.to_str().unwrap()
+        skipped
+            .map_or_else(|| hidden.clone(), |child| hidden.join(child))
+            .to_str()
+            .unwrap()
     );
-    assert_eq!(inventory(&hidden, true), before);
+    assert_eq!(report["targets"][0]["skipped"].as_array().unwrap().len(), 1);
+    assert_eq!(inventory(&hidden), before);
     expect_removed(&target.join("debug"), "alpha", A);
 }
 
@@ -390,7 +421,7 @@ fn failed_target_preserves_valid_json_and_another_target_completes() {
     let good = temp.path().join("good");
     basic(&good);
     writable(&good);
-    let before = inventory(&bad, true);
+    let before = inventory(&bad);
     chmod(&bad, 0o000);
     let output = constrained_binary()
         .args(["--keep-within", "2d", "--json"])
@@ -417,7 +448,7 @@ fn failed_target_preserves_valid_json_and_another_target_completes() {
     assert_eq!(report["targets"][0]["builds_removed"], 0);
     assert_eq!(report["targets"][1]["builds_removed"], 2);
     expect_removed(&good.join("debug"), "alpha", A);
-    assert_eq!(inventory(&bad, true), before);
+    assert_eq!(inventory(&bad), before);
 }
 
 #[test]

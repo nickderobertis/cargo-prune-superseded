@@ -21,8 +21,8 @@ pub enum EntryKind {
 pub struct InventoryEntry {
     /// File contents or a symlink’s encoded referent path; empty for directories.
     pub bytes: Vec<u8>,
-    /// Modification time; omitted for directories when the caller requests it.
-    pub modified: Option<SystemTime>,
+    /// Modification time.
+    pub modified: SystemTime,
     /// The entry’s filesystem type.
     pub kind: EntryKind,
 }
@@ -142,15 +142,14 @@ pub fn refresh_atime(path: &Path) {
     }
 }
 
-// Content, mtime and file type, but deliberately no atime or directory mtime (a
-// deletion changes its parent's mtime). Outside inventories include directory mtimes.
-/// Record paths, bytes, types and real mtimes, optionally including directory mtimes.
+// Content, mtime and file type, but deliberately no atime.
+/// Record paths, bytes, types and real mtimes, directories included.
 ///
 /// # Panics
 /// Panics if the real filesystem or subprocess operation fails or an assertion is unmet.
 #[must_use]
-pub fn inventory(path: &Path, directory_times: bool) -> Inventory {
-    fn walk(root: &Path, path: &Path, times: bool, result: &mut Inventory) {
+pub fn inventory(path: &Path) -> Inventory {
+    fn walk(root: &Path, path: &Path, result: &mut Inventory) {
         let meta = fs::symlink_metadata(path)
             .unwrap_or_else(|error| panic!("inventory {}: {error}", path.display()));
         let (bytes, kind) = if meta.is_symlink() {
@@ -171,22 +170,18 @@ pub fn inventory(path: &Path, directory_times: bool) -> Inventory {
             path.strip_prefix(root).unwrap().to_owned(),
             InventoryEntry {
                 bytes,
-                modified: if meta.is_dir() && !times {
-                    None
-                } else {
-                    Some(meta.modified().unwrap())
-                },
+                modified: meta.modified().unwrap(),
                 kind,
             },
         );
         if meta.is_dir() {
             for entry in fs::read_dir(path).unwrap() {
-                walk(root, &entry.unwrap().path(), times, result);
+                walk(root, &entry.unwrap().path(), result);
             }
         }
     }
     let mut result = BTreeMap::new();
-    walk(path, path, directory_times, &mut result);
+    walk(path, path, &mut result);
     result
 }
 
@@ -249,7 +244,7 @@ pub fn kept(profile: &Path, units: &[(&str, &str)]) -> Inventory {
     let mut result = BTreeMap::new();
     for (unit, hash) in units {
         for path in paths(profile, unit, hash) {
-            for (relative, value) in inventory(&path, true) {
+            for (relative, value) in inventory(&path) {
                 result.insert(path.join(relative), value);
             }
         }

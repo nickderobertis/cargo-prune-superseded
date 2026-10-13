@@ -41,7 +41,7 @@ fn modification_time_selection_and_allocated_bytes_with_external_hardlink() {
     let target = temp.path().join("target");
     basic(&target);
     let ignored = untouched(&target);
-    let ignored_before: Vec<_> = ignored.iter().map(|p| inventory(p, true)).collect();
+    let ignored_before: Vec<_> = ignored.iter().map(|p| inventory(p)).collect();
     let profile = target.join("debug");
     let kept_units = [("alpha", B), ("alpha", C), ("beta", B)];
     let before_kept = kept(&profile, &kept_units);
@@ -59,7 +59,7 @@ fn modification_time_selection_and_allocated_bytes_with_external_hardlink() {
     let retained_du = du(&retained_paths);
     let before_du = du(&[target.clone(), links.clone()]);
     refresh_atime(&target);
-    let dry_before = inventory(&target, true);
+    let dry_before = inventory(&target);
     let dry = json(&[&target], &["--dry-run"]);
     assert_eq!(
         dry["targets"][0]["bytes_freed"].as_u64().unwrap(),
@@ -69,14 +69,14 @@ fn modification_time_selection_and_allocated_bytes_with_external_hardlink() {
         dry["targets"][0]["bytes_retained"].as_u64().unwrap(),
         retained_du
     );
-    assert_eq!(inventory(&target, true), dry_before);
+    assert_eq!(inventory(&target), dry_before);
     let report = json(&[&target], &[]);
     expect_removed(&profile, "alpha", A);
     expect_removed(&profile, "beta", A);
     assert_eq!(kept(&profile, &kept_units), before_kept);
     assert_eq!(fs::read(links.join("artifact")).unwrap(), vec![b'x'; 8192]);
     for (path, before) in ignored.iter().zip(ignored_before) {
-        assert_eq!(inventory(path, true), before);
+        assert_eq!(inventory(path), before);
     }
     let after_du = du(&[target.clone(), links]);
     let result = &report["targets"][0];
@@ -192,11 +192,11 @@ fn dry_run_default_relative_multiple_targets_and_subcommand_form() {
     let other = temp.path().join("other");
     basic(&target);
     basic(&other);
-    let before = inventory(&target, true);
-    let other_before = inventory(&other, true);
+    let before = inventory(&target);
+    let other_before = inventory(&other);
     let report = json(&[&target], &["--dry-run"]);
     assert_eq!(report["targets"][0]["builds_removed"], 2);
-    assert_eq!(inventory(&target, true), before);
+    assert_eq!(inventory(&target), before);
     let default_kept = kept(
         &target.join("debug"),
         &[("alpha", B), ("alpha", C), ("beta", B)],
@@ -215,7 +215,7 @@ fn dry_run_default_relative_multiple_targets_and_subcommand_form() {
         ),
         default_kept
     );
-    assert_eq!(inventory(&other, true), other_before);
+    assert_eq!(inventory(&other), other_before);
     basic(&target);
     let out = binary()
         .current_dir(temp.path())
@@ -366,14 +366,14 @@ fn malformed_build_names_survive_and_nonhex_incremental_ids_are_pruned() {
         write(path);
         age_tree(path, OLD);
     }
-    let before: Vec<_> = paths.iter().map(|p| inventory(p, true)).collect();
+    let before: Vec<_> = paths.iter().map(|p| inventory(p)).collect();
     let old_inc = profile.join("incremental/nonhex-older_id");
     let new_inc = profile.join("incremental/nonhex-newer_id");
     write(&old_inc.join("nested/leaf"));
     write(&new_inc.join("nested/leaf"));
     age_tree(&old_inc, OLD);
     age_tree(&new_inc, MIDDLE);
-    let kept_inc = inventory(&new_inc, true);
+    let kept_inc = inventory(&new_inc);
     let kept_build = kept(&profile, &[("liberty", B)]);
     let result = json(&[temp.path()], &[]);
     assert_eq!(result["targets"][0]["builds_removed"], 1);
@@ -389,9 +389,9 @@ fn malformed_build_names_survive_and_nonhex_incremental_ids_are_pruned() {
     expect_removed(&profile, "liberty", A);
     assert_eq!(kept(&profile, &[("liberty", B)]), kept_build);
     assert!(!old_inc.exists());
-    assert_eq!(inventory(&new_inc, true), kept_inc);
+    assert_eq!(inventory(&new_inc), kept_inc);
     for (path, expected) in paths.iter().zip(before) {
-        assert_eq!(inventory(path, true), expected);
+        assert_eq!(inventory(path), expected);
     }
 }
 
@@ -560,13 +560,13 @@ fn hyphenated_package_and_rustc_spellings_share_the_whole_builds_newest_mtime() 
         .flat_map(|h| super::fixture::paths(&profile, "some-unit", h))
         .filter(|p| p.exists())
         .map(|path| {
-            let contents = inventory(&path, true);
+            let contents = inventory(&path);
             (path, contents)
         })
         .collect();
     let result = json(&[temp.path()], &[]);
     for (path, contents) in before {
-        assert_eq!(inventory(&path, true), contents);
+        assert_eq!(inventory(&path), contents);
     }
     expect_removed(&profile, "control", A);
     assert_eq!(result["targets"][0]["builds_removed"], 1);
@@ -611,8 +611,8 @@ fn multi_target_budget_telemetry_aggregates_the_whole_invocation() {
     for (hash, age) in [(A, OLD), (B, WINDOW), (C, RECENT)] {
         build(&second.join("release"), "omega", hash, age);
     }
-    let first_before = inventory(&first, true);
-    let second_before = inventory(&second, true);
+    let first_before = inventory(&first);
+    let second_before = inventory(&second);
     let result_path = temp.path().join("result.json");
     let mut expected_walked = 0;
     for target in [&first, &second] {
@@ -645,8 +645,8 @@ fn multi_target_budget_telemetry_aggregates_the_whole_invocation() {
             .unwrap(),
         expected_walked
     );
-    assert_eq!(inventory(&first, true), first_before);
-    assert_eq!(inventory(&second, true), second_before);
+    assert_eq!(inventory(&first), first_before);
+    assert_eq!(inventory(&second), second_before);
     let output = binary()
         .args(["--keep-within", "2d", "--json"])
         .arg(&first)
@@ -737,18 +737,18 @@ fn a_unit_named_liberty_keeps_dependency_files_and_bare_executables_with_its_bui
             artifacts.push(path);
         }
     }
-    let artifact_before: Vec<_> = artifacts.iter().map(|p| inventory(p, true)).collect();
+    let artifact_before: Vec<_> = artifacts.iter().map(|p| inventory(p)).collect();
     let before = kept(&profile, &[("liberty", A), ("liberty", B)]);
-    let binary_before: Vec<_> = executables.iter().map(|p| inventory(p, true)).collect();
+    let binary_before: Vec<_> = executables.iter().map(|p| inventory(p)).collect();
     build(&profile, "control", A, OLD);
     build(&profile, "control", B, MIDDLE);
     let result = json(&[temp.path()], &[]);
     assert_eq!(kept(&profile, &[("liberty", A), ("liberty", B)]), before);
     for (path, contents) in executables.iter().zip(binary_before) {
-        assert_eq!(inventory(path, true), contents);
+        assert_eq!(inventory(path), contents);
     }
     for (path, contents) in artifacts.iter().zip(artifact_before) {
-        assert_eq!(inventory(path, true), contents);
+        assert_eq!(inventory(path), contents);
     }
     expect_removed(&profile, "control", A);
     assert_eq!(result["targets"][0]["builds_removed"], 1);
@@ -769,13 +769,13 @@ fn absent_optional_containers_and_incremental_files_do_not_prevent_safe_pruning(
             write(&sibling.join("nested/leaf"));
             age_tree(&sibling, MIDDLE);
         }
-        let file_before = (container != "incremental").then(|| inventory(&file, true));
+        let file_before = (container != "incremental").then(|| inventory(&file));
         let before: Vec<_> = [("alpha", B), ("alpha", C), ("beta", B)]
             .iter()
             .flat_map(|(u, h)| paths(&profile, u, h))
             .filter(|p| p.exists())
             .map(|path| {
-                let data = inventory(&path, true);
+                let data = inventory(&path);
                 (path, data)
             })
             .collect();
@@ -783,7 +783,7 @@ fn absent_optional_containers_and_incremental_files_do_not_prevent_safe_pruning(
         assert_eq!(result["targets"][0]["builds_removed"], 2);
         assert_eq!(result["targets"][0]["skipped"], serde_json::json!([]));
         for (path, data) in before {
-            assert_eq!(inventory(&path, true), data);
+            assert_eq!(inventory(&path), data);
         }
         for (unit, hash) in [("alpha", A), ("beta", A)] {
             for path in paths(&profile, unit, hash) {
@@ -791,7 +791,7 @@ fn absent_optional_containers_and_incremental_files_do_not_prevent_safe_pruning(
             }
         }
         if let Some(data) = file_before {
-            assert_eq!(inventory(&file, true), data);
+            assert_eq!(inventory(&file), data);
         }
     }
 }

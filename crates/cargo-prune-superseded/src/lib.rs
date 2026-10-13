@@ -181,11 +181,11 @@ pub fn prune_target_measured(
         pass.skip(target, "symlink in target directory path refused");
         return Ok((pass.report, pass.metrics));
     }
-    let entries = fs::read_dir(target).map_err(|source| Error::Target {
+    let children = pass.children(target).map_err(|source| Error::Target {
         path: target.to_owned(),
         source,
     })?;
-    pass.discover(target, entries, options, now);
+    pass.discover(target, children, options, now);
     pass.metrics.walking_seconds = start.elapsed().as_secs_f64();
     let removing = Instant::now();
     if options.dry_run {
@@ -221,8 +221,13 @@ impl Pass {
         });
     }
 
-    fn discover(&mut self, path: &Path, entries: fs::ReadDir, options: &Options, now: SystemTime) {
-        let children = self.children(path, entries);
+    fn discover(
+        &mut self,
+        path: &Path,
+        children: Vec<PathBuf>,
+        options: &Options,
+        now: SystemTime,
+    ) {
         if children.iter().any(|child| {
             child.file_name().is_some_and(|name| name == ".fingerprint")
                 && fs::symlink_metadata(child).is_ok_and(|m| m.is_dir() || m.is_symlink())
@@ -242,8 +247,8 @@ impl Pass {
                 Ok(meta) if meta.is_symlink() => {
                     self.skip(&child, "symlink refused during profile discovery");
                 }
-                Ok(meta) if meta.is_dir() => match fs::read_dir(&child) {
-                    Ok(entries) => self.discover(&child, entries, options, now),
+                Ok(meta) if meta.is_dir() => match self.children(&child) {
+                    Ok(children) => self.discover(&child, children, options, now),
                     Err(e) => self.skip(&child, &e),
                 },
                 Ok(_) => (),
@@ -252,19 +257,14 @@ impl Pass {
         }
     }
 
-    fn children(&mut self, path: &Path, entries: fs::ReadDir) -> Vec<PathBuf> {
-        let mut children = Vec::new();
-        for entry in entries {
-            match entry {
-                Ok(e) => {
-                    self.metrics.entries_walked += 1;
-                    children.push(e.path());
-                }
-                Err(e) => self.skip(path, &e),
-            }
-        }
+    // A directory whose listing fails part-way is treated as unreadable as a whole.
+    fn children(&mut self, path: &Path) -> io::Result<Vec<PathBuf>> {
+        let mut children = fs::read_dir(path)?
+            .map(|entry| entry.map(|e| e.path()))
+            .collect::<io::Result<Vec<_>>>()?;
+        self.metrics.entries_walked += children.len() as u64;
         children.sort();
-        children
+        Ok(children)
     }
 
     fn profile(&mut self, path: &Path, options: &Options, now: SystemTime) {
@@ -272,30 +272,21 @@ impl Pass {
         let mut unreadable_container = false;
         for container in ["deps", ".fingerprint", "build", "incremental"] {
             let dir = path.join(container);
-            let meta = match fs::symlink_metadata(&dir) {
-                Ok(meta) => meta,
+            let children = match fs::symlink_metadata(&dir) {
                 Err(e) if e.kind() == io::ErrorKind::NotFound => continue,
-                Err(e) => {
-                    self.skip(&dir, &e);
-                    unreadable_container = true;
+                Ok(meta) if meta.is_symlink() => {
+                    self.skip(&dir, "symlinked container refused");
                     continue;
                 }
+                metadata => match metadata.and_then(|_| self.children(&dir)) {
+                    Ok(children) => children,
+                    Err(e) => {
+                        self.skip(&dir, &e);
+                        unreadable_container = true;
+                        continue;
+                    }
+                },
             };
-            if meta.is_symlink() {
-                self.skip(&dir, "symlinked container refused");
-                continue;
-            }
-            let entries = match fs::read_dir(&dir) {
-                Ok(entries) => entries,
-                Err(e) => {
-                    self.skip(&dir, &e);
-                    unreadable_container = true;
-                    continue;
-                }
-            };
-            let skipped_before = self.report.skipped.len();
-            let children = self.children(&dir, entries);
-            unreadable_container |= self.report.skipped.len() != skipped_before;
             for entry in children {
                 let kind = if container == "incremental" {
                     BuildKind::Incremental
@@ -360,30 +351,21 @@ impl Pass {
     }
 
     fn measure(&mut self, path: &Path, build: &mut Build) {
-        let meta = match entry_metadata(path) {
-            Ok(meta) => meta,
-            Err(e) => {
-                self.skip(path, &e);
-                build.incomplete = true;
-                return;
-            }
+        let (meta, time) = match entry_metadata(path) {
+            Ok(meta) if meta.is_symlink() => return,
+            metadata => match metadata.and_then(|meta| Ok((meta.modified()?, meta))) {
+                Ok((time, meta)) => (meta, time),
+                Err(e) => {
+                    self.skip(path, &e);
+                    build.incomplete = true;
+                    return;
+                }
+            },
         };
-        if meta.is_symlink() {
-            return;
-        }
-        match meta.modified() {
-            Ok(time) => build.newest = Some(build.newest.map_or(time, |old| old.max(time))),
-            Err(e) => {
-                self.skip(path, &e);
-                build.incomplete = true;
-            }
-        }
+        build.newest = Some(build.newest.map_or(time, |old| old.max(time)));
         if meta.is_dir() {
-            match fs::read_dir(path) {
-                Ok(entries) => {
-                    let skipped_before = self.report.skipped.len();
-                    let children = self.children(path, entries);
-                    build.incomplete |= self.report.skipped.len() != skipped_before;
+            match self.children(path) {
+                Ok(children) => {
                     for child in children {
                         self.measure(&child, build);
                     }
@@ -443,32 +425,8 @@ impl Pass {
     }
 
     fn remove(&mut self, path: &Path) -> bool {
-        let meta = match entry_metadata(path) {
-            Ok(meta) => meta,
-            Err(e) => {
-                self.skip(path, &e);
-                return false;
-            }
-        };
-        if meta.is_dir() {
-            let entries = match fs::read_dir(path) {
-                Ok(entries) => entries,
-                Err(e) => {
-                    self.skip(path, &e);
-                    return false;
-                }
-            };
-            for child in self.children(path, entries) {
-                self.remove(&child);
-            }
-        }
-        let result = if meta.is_dir() {
-            fs::remove_dir(path)
-        } else {
-            fs::remove_file(path)
-        };
-        match result {
-            Ok(()) => {
+        match self.remove_entry(path) {
+            Ok(meta) => {
                 if !meta.is_symlink() && (meta.is_dir() || links(&meta) == 1) {
                     self.report.bytes_freed += allocated_bytes(&meta);
                 }
@@ -479,6 +437,20 @@ impl Pass {
                 false
             }
         }
+    }
+
+    // A child that fails is skipped by its own call; the parent then fails as non-empty.
+    fn remove_entry(&mut self, path: &Path) -> io::Result<EntryMetadata> {
+        let meta = entry_metadata(path)?;
+        if meta.is_dir() {
+            for child in self.children(path)? {
+                self.remove(&child);
+            }
+            fs::remove_dir(path)?;
+        } else {
+            fs::remove_file(path)?;
+        }
+        Ok(meta)
     }
 }
 
@@ -540,15 +512,13 @@ fn target_metadata(target: &Path) -> io::Result<Metadata> {
     } else {
         std::env::current_dir()?.join(target)
     };
-    let mut prefix = PathBuf::new();
     let mut latest = None;
-    for component in absolute.components() {
-        prefix.push(component.as_os_str());
-        // A Windows drive/UNC prefix is not a complete path until its root follows.
-        if matches!(component, std::path::Component::Prefix(_)) {
-            continue;
-        }
-        let meta = fs::symlink_metadata(&prefix)?;
+    // Root first; ancestors never yields a bare Windows drive/UNC prefix, which is not a
+    // complete path until its root follows.
+    let mut ancestors: Vec<_> = absolute.ancestors().collect();
+    ancestors.reverse();
+    for prefix in ancestors {
+        let meta = fs::symlink_metadata(prefix)?;
         if meta.is_symlink() {
             return Ok(meta);
         }
@@ -664,14 +634,14 @@ mod tests {
             .iter()
             .flat_map(|hash| fixture::paths(&profile, "boundary", hash))
             .map(|path| {
-                let value = fixture::inventory(&path, true);
+                let value = fixture::inventory(&path);
                 (path, value)
             })
             .collect();
         let tied_kept: Vec<_> = fixture::paths(&profile, "tied", fixture::B)
             .into_iter()
             .map(|path| {
-                let value = fixture::inventory(&path, true);
+                let value = fixture::inventory(&path);
                 (path, value)
             })
             .collect();
@@ -688,7 +658,7 @@ mod tests {
         fixture::expect_removed(&profile, "boundary", fixture::A);
         fixture::expect_removed(&profile, "tied", fixture::A);
         for (path, value) in boundary_kept.into_iter().chain(tied_kept) {
-            assert_eq!(fixture::inventory(&path, true), value);
+            assert_eq!(fixture::inventory(&path), value);
         }
     }
 
@@ -742,6 +712,17 @@ mod tests {
         let error = prune_target(&file, &options, SystemTime::now()).unwrap_err();
         assert!(error.to_string().contains(file.to_str().unwrap()));
         assert!(error.source().is_some());
+        // A target beneath a file cannot even be inspected: an error, not an absent skip.
+        let beneath = file.join("target");
+        let error = prune_target(&beneath, &options, SystemTime::now()).unwrap_err();
+        assert!(matches!(&error, Error::Target { path, .. } if *path == beneath));
+        assert_eq!(
+            error
+                .source()
+                .and_then(|e| e.downcast_ref::<io::Error>())
+                .map(io::Error::kind),
+            Some(io::ErrorKind::NotADirectory)
+        );
     }
 
     #[test]
@@ -754,7 +735,7 @@ mod tests {
         let second = fixture::paths(&profile, "alpha", fixture::A)[1].clone();
         fs::remove_file(&second).unwrap();
         fs::hard_link(&first, &second).unwrap();
-        let before = fixture::inventory(temp.path(), true);
+        let before = fixture::inventory(temp.path());
         let dry = prune_target(
             temp.path(),
             &Options {
@@ -764,7 +745,7 @@ mod tests {
             SystemTime::now(),
         )
         .unwrap();
-        assert_eq!(fixture::inventory(temp.path(), true), before);
+        assert_eq!(fixture::inventory(temp.path()), before);
         let real = prune_target(
             temp.path(),
             &Options {
