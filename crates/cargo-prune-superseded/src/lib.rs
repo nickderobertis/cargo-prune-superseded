@@ -257,14 +257,17 @@ impl Pass {
         }
     }
 
-    // A listing that fails part-way (a device I/O error; no permission or race produces
-    // one) fails as a whole, so every caller handles it as an unreadable directory: the
-    // build or container it guards is kept, and nothing beneath it is removed.
     fn children(&mut self, path: &Path) -> io::Result<Vec<PathBuf>> {
-        let mut children = fs::read_dir(path)?
-            .map(|entry| entry.map(|e| e.path()))
-            .collect::<io::Result<Vec<_>>>()?;
-        self.metrics.entries_walked += children.len() as u64;
+        let mut children = Vec::new();
+        for entry in fs::read_dir(path)? {
+            match entry {
+                Ok(e) => {
+                    self.metrics.entries_walked += 1;
+                    children.push(e.path());
+                }
+                Err(e) => self.skip(path, &e),
+            }
+        }
         children.sort();
         Ok(children)
     }
@@ -274,6 +277,7 @@ impl Pass {
         let mut unreadable_container = false;
         for container in ["deps", ".fingerprint", "build", "incremental"] {
             let dir = path.join(container);
+            let skipped_before = self.report.skipped.len();
             let children = match fs::symlink_metadata(&dir) {
                 Err(e) if e.kind() == io::ErrorKind::NotFound => continue,
                 Ok(meta) if meta.is_symlink() => {
@@ -281,7 +285,11 @@ impl Pass {
                     continue;
                 }
                 metadata => match metadata.and_then(|_| self.children(&dir)) {
-                    Ok(children) => children,
+                    Ok(children) => {
+                        // An entry the listing could not name may belong to any build.
+                        unreadable_container |= self.report.skipped.len() != skipped_before;
+                        children
+                    }
                     Err(e) => {
                         self.skip(&dir, &e);
                         unreadable_container = true;
@@ -362,14 +370,18 @@ impl Pass {
                 return;
             }
         };
-        // Linux, macOS and Windows always record an mtime; an entry without one would
-        // leave its build undated, so the build is kept rather than judged by the rest.
-        let time = meta.modified().ok();
-        build.incomplete |= time.is_none();
-        build.newest = build.newest.max(time);
+        match meta.modified() {
+            Ok(time) => build.newest = Some(build.newest.map_or(time, |old| old.max(time))),
+            Err(e) => {
+                self.skip(path, &e);
+                build.incomplete = true;
+            }
+        }
         if meta.is_dir() {
+            let skipped_before = self.report.skipped.len();
             match self.children(path) {
                 Ok(children) => {
+                    build.incomplete |= self.report.skipped.len() != skipped_before;
                     for child in children {
                         self.measure(&child, build);
                     }
