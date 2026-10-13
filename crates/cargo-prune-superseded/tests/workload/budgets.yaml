@@ -2,11 +2,8 @@ schema_version: 1
 budgets:
   - id: prune-superseded-pass-seconds
     description: >-
-      Wall-clock seconds for one real maintenance invocation over approximately
-      170,000 sparse entries, 1,400 units with six builds, and four profiles.
-      The 60-second estimate follows a 169,566-entry real slot's 3.64-second
-      warm stat walk and a 3-million-entry walk at 75,000 entries per second
-      measured on 2026-10-11, allowing under ten times the walk for removal.
+      Wall-clock seconds for one maintenance invocation over a large sparse target
+      directory, protecting the time a warm-pool slot stays out of service.
     measure: reported
     command: [node, prune-pass-budget.mjs]
     unit: seconds

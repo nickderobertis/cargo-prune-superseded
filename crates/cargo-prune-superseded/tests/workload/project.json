@@ -11,6 +11,30 @@
     "prune-fixtures"
   ],
   "targets": {
+    "format": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "cargo fmt -p cargo-prune-superseded-workload"
+      }
+    },
+    "format-check": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "cargo fmt -p cargo-prune-superseded-workload -- --check"
+      }
+    },
+    "lint": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "cargo clippy -p cargo-prune-superseded-workload --all-targets --locked -- -D warnings"
+      }
+    },
+    "typecheck": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "cargo check -p cargo-prune-superseded-workload --all-targets --locked"
+      }
+    },
     "workload": {
       "executor": "nx:run-commands",
       "cache": false,
