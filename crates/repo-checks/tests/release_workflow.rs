@@ -438,53 +438,15 @@ fn no_merge_in_the_workflow_bypasses_the_required_checks() {
     }
 }
 
-/// A `gh` double first on `PATH` (the only thing doubled): it records each invocation's
-/// arguments and the token it was handed, answers `gh pr list` by applying the caller's own
-/// `--jq` filter with the real `jq` to canned `--json number,headRefName` output, and
-/// answers `gh pr merge` with the configured exit status. Written once, before any test
-/// spawns a process, so no child can inherit it open for writing (ETXTBSY).
-fn gh_double_dir() -> &'static Path {
-    static DIR: std::sync::OnceLock<PathBuf> = std::sync::OnceLock::new();
-    DIR.get_or_init(|| {
-        use std::os::unix::fs::PermissionsExt;
-
-        let dir = Path::new(env!("CARGO_TARGET_TMPDIR")).join("release-workflow-gh-double");
-        std::fs::create_dir_all(&dir).expect("a directory for the gh double");
-        let gh = dir.join("gh");
-        std::fs::write(
-            &gh,
-            r#"#!/usr/bin/env bash
-set -euo pipefail
-{ printf 'GITHUB_TOKEN=%s' "${GITHUB_TOKEN:-}"; printf '\x1f%s' "$@"; printf '\n'; } >>"$GH_DOUBLE_CALLS"
-case "${1:-} ${2:-}" in
-  "pr list")
-    shift 2
-    json="" filter=""
-    while [ $# -gt 0 ]; do
-      case "$1" in
-        --json) json="$2"; shift 2 ;;
-        --jq) filter="$2"; shift 2 ;;
-        *) shift ;;
-      esac
-    done
-    [ "$json" = number,headRefName ] || { echo "gh double: unexpected --json '$json'" >&2; exit 2; }
-    jq -r "$filter" "$GH_DOUBLE_PULLS"
-    ;;
-  "pr merge")
-    if [ "$GH_DOUBLE_MERGE_EXIT" != 0 ]; then
-      echo "GraphQL: Pull request Auto merge is not allowed for this repository (enablePullRequestAutoMerge)" >&2
-    fi
-    exit "$GH_DOUBLE_MERGE_EXIT"
-    ;;
-  *) echo "gh double: unexpected gh $*" >&2; exit 2 ;;
-esac
-"#,
-        )
-        .expect("the gh double");
-        std::fs::set_permissions(&gh, std::fs::Permissions::from_mode(0o755))
-            .expect("an executable bit on the gh double");
-        dir
-    })
+/// The directory holding the `gh` double put first on `PATH` (the only thing doubled): it
+/// records each invocation's arguments and the token it was handed, answers `gh pr list` by
+/// applying the caller's own `--jq` filter with the real `jq` to canned `--json
+/// number,headRefName` output, and answers `gh pr merge` with the configured exit status.
+/// It is checked in, executable, rather than written by the test: nextest runs each test in
+/// its own process, and one process executing a double another is still writing fails with
+/// ETXTBSY ("Text file busy").
+fn gh_double_dir() -> PathBuf {
+    Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/gh-double")
 }
 
 const REPOSITORY: &str = "nickderobertis/cargo-prune-superseded";
@@ -524,9 +486,11 @@ fn run_arming_step(pulls: &str, merge_exit: u8) -> Armed {
     let pulls_path = scratch.path().join("pulls.json");
     std::fs::write(&pulls_path, pulls).expect("the canned pull requests");
     let calls_path = scratch.path().join("calls");
-    let path = std::env::join_paths(std::iter::once(gh_double_dir().to_path_buf()).chain(
-        std::env::split_paths(&std::env::var_os("PATH").unwrap_or_default()),
-    ))
+    let path = std::env::join_paths(
+        std::iter::once(gh_double_dir()).chain(std::env::split_paths(
+            &std::env::var_os("PATH").unwrap_or_default(),
+        )),
+    )
     .expect("a PATH");
     let output = std::process::Command::new("bash")
         .args(["--noprofile", "--norc", "-e"])

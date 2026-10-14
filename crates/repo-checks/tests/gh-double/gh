@@ -1,0 +1,25 @@
+#!/usr/bin/env bash
+set -euo pipefail
+{ printf 'GITHUB_TOKEN=%s' "${GITHUB_TOKEN:-}"; printf '\x1f%s' "$@"; printf '\n'; } >>"$GH_DOUBLE_CALLS"
+case "${1:-} ${2:-}" in
+  "pr list")
+    shift 2
+    json="" filter=""
+    while [ $# -gt 0 ]; do
+      case "$1" in
+        --json) json="$2"; shift 2 ;;
+        --jq) filter="$2"; shift 2 ;;
+        *) shift ;;
+      esac
+    done
+    [ "$json" = number,headRefName ] || { echo "gh double: unexpected --json '$json'" >&2; exit 2; }
+    jq -r "$filter" "$GH_DOUBLE_PULLS"
+    ;;
+  "pr merge")
+    if [ "$GH_DOUBLE_MERGE_EXIT" != 0 ]; then
+      echo "GraphQL: Pull request Auto merge is not allowed for this repository (enablePullRequestAutoMerge)" >&2
+    fi
+    exit "$GH_DOUBLE_MERGE_EXIT"
+    ;;
+  *) echo "gh double: unexpected gh $*" >&2; exit 2 ;;
+esac
