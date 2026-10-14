@@ -8,7 +8,8 @@
   ],
   "implicitDependencies": [
     "cargo-prune-superseded",
-    "coverage"
+    "coverage",
+    "prune-fixtures"
   ],
   "//": "The journeys that spawn the built binary. Behind its own edge, so only a change that can reach the binary runs them.",
   "targets": {

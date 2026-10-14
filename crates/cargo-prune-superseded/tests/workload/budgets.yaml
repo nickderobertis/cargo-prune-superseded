@@ -1,0 +1,11 @@
+schema_version: 1
+budgets:
+  - id: prune-superseded-pass-seconds
+    description: >-
+      Wall-clock seconds for one maintenance invocation over a large sparse target
+      directory, protecting the time a warm-pool slot stays out of service.
+    measure: reported
+    command: [node, prune-pass-budget.mjs]
+    unit: seconds
+    direction: max
+    threshold: 60

@@ -7,6 +7,7 @@ name: ci
 
 on:
   pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
   push:
     branches: [main]
 
@@ -74,6 +75,7 @@ jobs:
           echo "$HOME/.local/bin" >> "$GITHUB_PATH"
       - run: just bootstrap
       - run: just check all
+      - run: just workload
 
   # The end-user install path on every platform (crates/cargo-prune-superseded-install/smoke.sh).
   install:
@@ -96,6 +98,9 @@ jobs:
           tool: just
       - run: just fetch
       - run: just install-smoke
+      - name: Exercise native Windows pruning and allocated blocks
+        if: matrix.os == 'windows-latest'
+        run: just test-windows
 
   supply-chain:
     runs-on: ubuntu-latest

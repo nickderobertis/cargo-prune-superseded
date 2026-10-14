@@ -2,6 +2,8 @@
 resolver = "3"
 members = [
     "crates/cargo-prune-superseded",
+    "crates/prune-fixtures",
+    "crates/cargo-prune-superseded/tests/workload",
     "crates/cargo-prune-superseded-e2e",
     "crates/cargo-prune-superseded-install",
     "crates/dev-setup-e2e",
@@ -11,12 +13,13 @@ members = [
 [workspace.package]
 version = "0.1.0"
 edition = "2024"
-rust-version = "1.89"
+rust-version = "1.97"
 license = "MIT"
 repository = "https://github.com/nickderobertis/cargo-prune-superseded"
 authors = ["Nick DeRobertis"]
 
 [workspace.dependencies]
+prune-fixtures = { package = "cargo-prune-superseded-fixtures", path = "crates/prune-fixtures" }
 clap = { version = "4.6.7", features = ["derive"] }
 
 assert_cmd = "2.2.2"

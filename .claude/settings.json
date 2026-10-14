@@ -41,7 +41,9 @@
       "Bash(./scripts/session-setup.sh)",
       "Bash(git status)",
       "Bash(git diff)",
-      "Bash(git log --oneline)"
+      "Bash(git log --oneline)",
+      "Bash(just workload)",
+      "Bash(just test-windows)"
     ],
     "deny": []
   }

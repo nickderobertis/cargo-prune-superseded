@@ -43,6 +43,16 @@ name = "repo-checks"
 release = false
 publish = false
 
+[[package]]
+name = "cargo-prune-superseded-workload"
+release = false
+publish = false
+
+[[package]]
+name = "cargo-prune-superseded-fixtures"
+release = false
+publish = false
+
 [changelog]
 commit_parsers = [
   { message = "^feat", group = "Added" },
