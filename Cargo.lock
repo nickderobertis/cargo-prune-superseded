@@ -116,7 +116,7 @@ checksum = "72f5acc6cb2ba439de613abc23857ec3d78374d8ed5ac84e9d11336e87da8649"
 
 [[package]]
 name = "cargo-prune-superseded"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "cargo-prune-superseded-fixtures",
  "clap",
@@ -131,7 +131,7 @@ dependencies = [
 
 [[package]]
 name = "cargo-prune-superseded-e2e"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "assert_cmd",
  "cargo-prune-superseded-fixtures",
@@ -145,7 +145,7 @@ dependencies = [
 
 [[package]]
 name = "cargo-prune-superseded-fixtures"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "filetime",
  "tempfile",
@@ -153,14 +153,14 @@ dependencies = [
 
 [[package]]
 name = "cargo-prune-superseded-install"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "tempfile",
 ]
 
 [[package]]
 name = "cargo-prune-superseded-workload"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "assert_cmd",
  "cargo-prune-superseded-fixtures",
@@ -276,7 +276,7 @@ checksum = "a31eee39dddec8330830986fcd7625edb5a24ec90ea038215273bbc3adb08ac6"
 
 [[package]]
 name = "dev-setup-e2e"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "serde_norway",
  "tempfile",
@@ -665,7 +665,7 @@ checksum = "d6f6ff9a378485b298a5286656da665ba74413d36db0979633275d2e708145d4"
 
 [[package]]
 name = "repo-checks"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "serde_json",
  "serde_norway",
