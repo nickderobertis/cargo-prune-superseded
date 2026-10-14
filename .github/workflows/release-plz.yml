@@ -2,11 +2,13 @@
 #   * `release` — only when the push is a merged release pull request (head branch
 #     `release-plz-*`): publish the crate to crates.io, tag it, cut the GitHub Release;
 #   * `release-pr` — open or update the next release pull request (version, lockfile,
-#     changelog). Merging it is the only human step in a release.
+#     changelog) and arm auto-merge on it, so it merges itself once its required checks
+#     (`check`, `pr-title`, `llmlint`) pass: there is no human step in a release.
 #
 # Every write goes through RELEASE_PLZ_TOKEN, a personal access token: a tag or pull
 # request created with the default token triggers no other workflow, so the release pull
-# request's checks would never run. CARGO_REGISTRY_TOKEN is the crates.io publish token.
+# request's checks would never run, and a merge made with it would never publish.
+# CARGO_REGISTRY_TOKEN is the crates.io publish token.
 # crates/repo-checks/tests/release_workflow.rs holds this file to that wiring.
 name: release-plz
 
@@ -87,3 +89,18 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.RELEASE_PLZ_TOKEN }}
         run: release-plz release-pr --config release-plz.toml --git-token "$GITHUB_TOKEN"
+      # `--auto` only arms the merge: it lands when the required checks pass, never past
+      # them, and is never forced with `--admin` nor retried without `--auto`.
+      - name: Auto-merge the release PR when the gate is green
+        env:
+          GITHUB_TOKEN: ${{ secrets.RELEASE_PLZ_TOKEN }}
+        run: |
+          pr=$(gh pr list --repo "$GITHUB_REPOSITORY" --state open --json number,headRefName \
+                 --jq 'map(select(.headRefName | startswith("release-plz-"))) | .[0].number // empty')
+          if [ -n "$pr" ]; then
+            echo "Enabling auto-merge on release PR #$pr"
+            gh pr merge "$pr" --repo "$GITHUB_REPOSITORY" --auto --squash --delete-branch \
+              || echo "::warning::could not enable auto-merge on #$pr (already enabled, or already merging)"
+          else
+            echo "No open release PR to auto-merge."
+          fi

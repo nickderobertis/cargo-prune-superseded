@@ -66,8 +66,9 @@ llmlint recipes sit outside the deterministic gate.
   Queue with `gh pr merge --auto --squash`; head branches auto-delete; admins may bypass in
   a break-glass. Every gating check is required (`just governance --verify` reads them
   back); rename a CI job and the governance recipe moves with it.
-- **Releases: release-plz behind a release PR.** Merging the release PR is the only human
-  step in a release; nobody edits a version, tags or publishes by hand. Bump policy
+- **Releases: release-plz behind a release PR.** The release PR merges itself once its
+  required checks (`check`, `pr-title`, `llmlint`) pass, so a release has no human step;
+  nobody edits a version, tags or publishes by hand. Bump policy
   (pre-1.0): `feat` and breaking changes → minor; `fix`/`perf`/`refactor`/`build` →
   patch; anything else → no release. Post-1.0 a breaking change is a major.
 - **Broader tier at release-prep:** releases are batched behind the release PR, so it
