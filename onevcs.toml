@@ -1,0 +1,9 @@
+# onevcs reads this from the publication checkout's base as this repository's default publication policy.
+schema_version = 2
+
+[policy]
+publication = "change-auto"
+approvals = "none"
+
+[policy.checks]
+wait_seconds = 29700  # recorded max 23722 s (run 38471962501) + 25% margin
